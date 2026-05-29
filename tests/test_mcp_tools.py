@@ -46,3 +46,30 @@ def test_get_expected_range_widths(ch):
     assert len(out) == 3
     assert out[0]["low"] == 90.0 and out[0]["high"] == 110.0
     assert out[0]["width"] == pytest.approx(20.0)
+
+
+def test_check_ladder_rungs_classifies_against_band(ch):
+    _seed_points(ch, "run-A")  # band envelope: p10 min=90, p90 max=112
+    out = mcp_tools.check_ladder_rungs(ch, "close", "symbol=BTC", [80.0, 100.0, 130.0])
+    verdicts = {r["rung"]: r["verdict"] for r in out}
+    assert verdicts[80.0] == "below_band"
+    assert verdicts[100.0] == "in_band"
+    assert verdicts[130.0] == "above_band"
+
+
+def test_check_ladder_rungs_no_forecast(ch):
+    out = mcp_tools.check_ladder_rungs(ch, "close", "symbol=NOPE", [100.0])
+    assert out == [{"rung": 100.0, "verdict": "no_forecast"}]
+
+
+def test_get_divergence_positions(ch):
+    _seed_points(ch, "run-A")  # nearest horizon (step 1): p10=90, p90=110
+    assert mcp_tools.get_divergence(ch, "close", "symbol=BTC", 85.0)["position"] == "below_p10"
+    assert mcp_tools.get_divergence(ch, "close", "symbol=BTC", 100.0)["position"] == "in_band"
+    assert mcp_tools.get_divergence(ch, "close", "symbol=BTC", 120.0)["position"] == "above_p90"
+    assert mcp_tools.get_divergence(ch, "close", "symbol=BTC", 100.0)["in_band"] is True
+
+
+def test_get_divergence_no_forecast(ch):
+    d = mcp_tools.get_divergence(ch, "close", "symbol=NOPE", 100.0)
+    assert d["position"] == "no_forecast" and d["in_band"] is None

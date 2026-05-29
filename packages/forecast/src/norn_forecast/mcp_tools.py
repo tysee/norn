@@ -69,3 +69,51 @@ def get_expected_range(
         }
         for p in get_forecast(client, metric, segment, horizon)
     ]
+
+
+def check_ladder_rungs(
+    client: Client,
+    metric: str,
+    segment: str,
+    rungs: list[float],
+    horizon: int | None = None,
+) -> list[dict]:
+    pts = get_forecast(client, metric, segment, horizon)
+    if not pts:
+        return [{"rung": r, "verdict": "no_forecast"} for r in rungs]
+    band_low = min(p["p10"] for p in pts)
+    band_high = max(p["p90"] for p in pts)
+    out: list[dict] = []
+    for r in rungs:
+        if r < band_low:
+            verdict = "below_band"
+        elif r > band_high:
+            verdict = "above_band"
+        else:
+            verdict = "in_band"
+        out.append(
+            {"rung": r, "verdict": verdict, "band_low": band_low, "band_high": band_high}
+        )
+    return out
+
+
+def get_divergence(
+    client: Client, metric: str, segment: str, current_value: float
+) -> dict:
+    pts = get_forecast(client, metric, segment, horizon=1)
+    if not pts:
+        return {"in_band": None, "position": "no_forecast"}
+    p = pts[0]
+    if current_value < p["p10"]:
+        position = "below_p10"
+    elif current_value > p["p90"]:
+        position = "above_p90"
+    else:
+        position = "in_band"
+    return {
+        "in_band": position == "in_band",
+        "position": position,
+        "p10": p["p10"],
+        "p90": p["p90"],
+        "current": current_value,
+    }
