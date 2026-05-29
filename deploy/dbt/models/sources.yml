@@ -1,0 +1,7 @@
+version: 2
+sources:
+  - name: norn
+    schema: norn
+    tables:
+      - name: raw_candles    # populated separately (out of scope)
+      - name: forecast_point # written by the norn worker

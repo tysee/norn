@@ -19,5 +19,46 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
 
+  lightdash-db:
+    image: postgres:15
+    container_name: norn-lightdash-db
+    environment:
+      POSTGRES_USER: lightdash
+      POSTGRES_PASSWORD: lightdash
+      POSTGRES_DB: lightdash
+    volumes:
+      - lightdash-db-data:/var/lib/postgresql/data
+
+  headless-browser:
+    image: ghcr.io/lightdash/headless-browser:latest
+    container_name: norn-headless-browser
+
+  lightdash:
+    image: lightdash/lightdash:latest
+    container_name: norn-lightdash
+    depends_on:
+      - lightdash-db
+      - headless-browser
+      - clickhouse
+    environment:
+      PGHOST: lightdash-db
+      PGPORT: 5432
+      PGUSER: lightdash
+      PGPASSWORD: lightdash
+      PGDATABASE: lightdash
+      LIGHTDASH_SECRET: local-dev-secret
+      SECURE_COOKIES: "false"
+      TRUST_PROXY: "true"
+      SITE_URL: http://localhost:8080
+      PORT: "8080"
+      HEADLESS_BROWSER_HOST: headless-browser
+      HEADLESS_BROWSER_PORT: "3000"
+      DBT_PROJECT_DIR: /usr/app/dbt
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./dbt:/usr/app/dbt
+
 volumes:
   clickhouse-data: {}
+  lightdash-db-data: {}

@@ -1,0 +1,7 @@
+name: norn_demo
+version: "1.0.0"
+profile: norn
+model-paths: ["models"]
+models:
+  norn_demo:
+    +materialized: view
