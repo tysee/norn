@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""
+packages/integration/src/norn_integration/schema.py
+
+Применение DDL контракта прогнозов к ClickHouse (идемпотентно).
+
+Методы:
+- schema_sql() -> str — читает schema.sql из пакета.
+- apply_schema(client) -> None — выполняет все CREATE TABLE IF NOT EXISTS.
+"""
+
 from importlib.resources import files
 
 from clickhouse_connect.driver.client import Client

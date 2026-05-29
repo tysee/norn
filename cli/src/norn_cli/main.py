@@ -1,5 +1,18 @@
 from __future__ import annotations
 
+"""
+cli/src/norn_cli/main.py
+
+CLI norn (typer): поднять локальный сайдкар, применить схему, прогнать прогноз
+и калибровку.
+
+Команды:
+- up — поднять ClickHouse в Docker.
+- schema-apply — применить контракт-схему.
+- forecast <job> — прогон прогноза.
+- calibrate <job> — rolling-origin калибровка.
+"""
+
 import subprocess
 from pathlib import Path
 

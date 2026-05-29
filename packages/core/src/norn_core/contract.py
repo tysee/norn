@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""
+packages/core/src/norn_core/contract.py
+
+Контракт слоя прогнозов: модели forecast-job (из YAML) и forecast-point
+(строка таблицы прогноза). Общий для forecast-воркера и integration-слоя.
+
+Классы/методы:
+- Grain — зерно ряда (hourly | daily).
+- ForecastJob — конфиг прогноза; ForecastJob.from_yaml(path) — загрузка из YAML.
+- ForecastPoint — одна точка прогноза с интервалами p10/p50/p90.
+"""
+
 from datetime import datetime
 from enum import Enum
 from pathlib import Path

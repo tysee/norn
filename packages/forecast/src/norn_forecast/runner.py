@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""
+packages/forecast/src/norn_forecast/runner.py
+
+Прогон forecast-job: извлечение рядов по сегментам из ClickHouse, прогноз
+выбранным форкастером и запись строк контракта (forecast_point/forecast_run).
+
+Методы:
+- run_job(job, client, forecaster=None) -> str — выполняет job, возвращает run_id.
+"""
+
 import uuid
 from datetime import UTC, datetime, timedelta
 
