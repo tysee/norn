@@ -1,0 +1,10 @@
+# Generic example forecast-job (NOT crypto — crypto jobs live in norn-crypto-instance).
+metric: sales
+source: analytics.mart_metric
+grain: daily
+dimensions: [region]
+horizon: 14
+context_length: 180
+seasonality: 7
+model: baseline-seasonal-naive
+schedule: "0 6 * * *"
