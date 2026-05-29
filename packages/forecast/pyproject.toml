@@ -2,7 +2,7 @@
 name = "norn-forecast"
 version = "0.0.0"
 requires-python = ">=3.12"
-dependencies = ["norn-core", "norn-integration", "numpy>=1.26", "httpx>=0.27", "fastapi>=0.110"]
+dependencies = ["norn-core", "norn-integration", "numpy>=1.26", "httpx>=0.27", "fastapi>=0.110", "mcp>=1.2"]
 
 [build-system]
 requires = ["hatchling"]
