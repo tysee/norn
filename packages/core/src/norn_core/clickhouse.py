@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 packages/core/src/norn_core/clickhouse.py
 
@@ -9,6 +7,7 @@ packages/core/src/norn_core/clickhouse.py
 - parse_dsn(dsn) -> dict — разбор строки подключения (host/port/user/db/secure).
 - get_client(dsn=None) -> Client — клиент из DSN или env NORN_CLICKHOUSE_URL.
 """
+from __future__ import annotations
 
 import os
 from urllib.parse import urlparse

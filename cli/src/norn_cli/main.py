@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 cli/src/norn_cli/main.py
 
@@ -12,6 +10,7 @@ CLI norn (typer): поднять локальный сайдкар, примен
 - forecast <job> — прогон прогноза.
 - calibrate <job> — rolling-origin калибровка.
 """
+from __future__ import annotations
 
 import subprocess
 from pathlib import Path

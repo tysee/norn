@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 packages/core/src/norn_core/contract.py
 
@@ -11,6 +9,7 @@ packages/core/src/norn_core/contract.py
 - ForecastJob — конфиг прогноза; ForecastJob.from_yaml(path) — загрузка из YAML.
 - ForecastPoint — одна точка прогноза с интервалами p10/p50/p90.
 """
+from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 packages/forecast/src/norn_forecast/runner.py
 
@@ -9,6 +7,7 @@ packages/forecast/src/norn_forecast/runner.py
 Методы:
 - run_job(job, client, forecaster=None) -> str — выполняет job, возвращает run_id.
 """
+from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
