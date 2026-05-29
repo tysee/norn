@@ -13,3 +13,11 @@ def test_forecast_point_columns(ch):
         "horizon_step", "y_hat", "p10", "p50", "p90", "y_actual",
         "model_name", "created_at",
     } <= cols
+
+
+def test_forecast_segment_columns(ch):
+    cols = {row[0] for row in ch.query("DESCRIBE TABLE forecast_segment").result_rows}
+    assert {
+        "forecast_run_id", "metric_name", "segment_key", "n_points",
+        "is_sparse", "wape", "mape", "coverage", "bias", "created_at",
+    } <= cols

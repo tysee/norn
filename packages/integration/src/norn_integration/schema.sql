@@ -25,3 +25,16 @@ CREATE TABLE IF NOT EXISTS forecast_point (
     model_name      String,
     created_at      DateTime DEFAULT now()
 ) ENGINE = MergeTree ORDER BY (metric_name, segment_key, forecast_ts);
+
+CREATE TABLE IF NOT EXISTS forecast_segment (
+    forecast_run_id String,
+    metric_name     String,
+    segment_key     String,
+    n_points        UInt32,
+    is_sparse       UInt8,
+    wape            Float64,
+    mape            Float64,
+    coverage        Float64,
+    bias            Float64,
+    created_at      DateTime DEFAULT now()
+) ENGINE = MergeTree ORDER BY (metric_name, segment_key, forecast_run_id);
