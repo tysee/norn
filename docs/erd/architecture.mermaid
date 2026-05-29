@@ -8,6 +8,7 @@ flowchart TB
         direction TB
         agent["packages/agent<br/>Агент анализа зависимостей<br/>(pi.dev)"]
         forecast["packages/forecast<br/>Сервис прогнозов<br/>(TimesFM 2.5 worker)"]
+        tfmworker["TimesFM worker<br/>(FastAPI, torch container)"]
         integ["packages/integration<br/>Обвязка: dbt + Lightdash + ClickHouse"]
         meta[("addon Postgres<br/>метаданные: jobs, runs,<br/>deps, metric_def")]
     end
@@ -34,6 +35,8 @@ flowchart TB
 
     forecast -->|extract series| ch
     forecast -->|write-back forecast_point| ch
+    forecast -->|HTTP /forecast| tfmworker
+    lightdash -->|reads dbt actual_vs_forecast| ch
     forecast --> meta
 
     agent -->|читает ряды| ch
