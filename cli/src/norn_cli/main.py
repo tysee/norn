@@ -20,6 +20,7 @@ import typer
 
 from norn_core.clickhouse import get_client
 from norn_core.contract import ForecastJob
+from norn_forecast.calibration import calibrate_job
 from norn_forecast.runner import run_job
 from norn_integration.schema import apply_schema
 
@@ -44,6 +45,16 @@ def forecast(job_path: str = typer.Argument(..., help="path to a forecast-job YA
     apply_schema(client)
     run_id = run_job(job, client=client)
     typer.echo(f"run_id={run_id}")
+
+
+@app.command()
+def calibrate(job_path: str = typer.Argument(..., help="path to a forecast-job YAML")) -> None:
+    """Rolling-origin calibration: writes coverage/wape/mape/bias to forecast_segment."""
+    job = ForecastJob.from_yaml(job_path)
+    client = get_client()
+    apply_schema(client)
+    run_id = calibrate_job(job, client=client)
+    typer.echo(f"calibration run_id={run_id}")
 
 
 @app.command()
