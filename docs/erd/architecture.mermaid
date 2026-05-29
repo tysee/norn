@@ -1,0 +1,50 @@
+%% Norn — архитектура sidecar к Lightdash
+flowchart TB
+
+    analyst([Аналитик])
+    cli["CLI / orchestrator<br/>norn up — одна команда"]
+
+    subgraph monorepo["Моно-репо: tysee/norn"]
+        direction TB
+        agent["packages/agent<br/>Агент анализа зависимостей<br/>(pi.dev)"]
+        forecast["packages/forecast<br/>Сервис прогнозов<br/>(TimesFM 2.5 worker)"]
+        integ["packages/integration<br/>Обвязка: dbt + Lightdash + ClickHouse"]
+        meta[("addon Postgres<br/>метаданные: jobs, runs,<br/>deps, metric_def")]
+    end
+
+    subgraph existing["Существующий стек (не форкаем)"]
+        direction TB
+        lightdash["Lightdash<br/>BI / дашборды / semantic"]
+        ldpg[("Lightdash Postgres<br/>проекты, dbt-метрики")]
+        ch[("ClickHouse<br/>marts, forecast tables,<br/>actual_vs_forecast")]
+        dbt["dbt project<br/>метрики и grain"]
+    end
+
+    llm["LLM-провайдер<br/>объяснение зависимостей"]
+
+    analyst --> cli
+    cli --> integ
+    cli --> forecast
+    cli --> agent
+
+    integ -->|читает определения метрик| ldpg
+    integ -->|строит/читает marts| ch
+    integ -->|регистрирует forecast-модели| dbt
+    dbt --> ch
+
+    forecast -->|extract series| ch
+    forecast -->|write-back forecast_point| ch
+    forecast --> meta
+
+    agent -->|читает ряды| ch
+    agent -->|корреляции + лаги| meta
+    agent -->|объяснение| llm
+
+    lightdash -->|actual vs forecast| ch
+    lightdash --> ldpg
+    analyst -->|смотрит дашборд| lightdash
+
+    classDef ours fill:#E8C8BA,stroke:#B8553E,color:#1C1814;
+    classDef ext fill:#EFE6CF,stroke:#8C8275,color:#1C1814;
+    class agent,forecast,integ,meta,cli ours;
+    class lightdash,ldpg,ch,dbt ext;

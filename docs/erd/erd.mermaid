@@ -1,0 +1,197 @@
+%% Norn — ERD (репозиторий tysee/norn)
+%% Stores:  [META] = addon Postgres (рядом с Lightdash)
+%%          [CH]   = ClickHouse (факты, прогнозы)
+%%          [LD]   = Lightdash-owned Postgres (читаем, не владеем)
+erDiagram
+
+    %% ---------- Integration / config [META] ----------
+    PROJECT ||--o{ CONNECTION : has
+    PROJECT ||--o{ METRIC_DEFINITION : defines
+    PROJECT ||--o{ DEPENDENCY_ANALYSIS : runs
+    PROJECT }o--|| LD_PROJECT : "maps to"
+
+    PROJECT {
+        uuid id PK
+        string name
+        uuid lightdash_project_id FK "-> LD_PROJECT"
+        uuid clickhouse_connection_id FK "-> CONNECTION"
+        timestamp created_at
+    }
+
+    CONNECTION {
+        uuid id PK
+        uuid project_id FK
+        string type "clickhouse | lightdash_pg"
+        string dsn_secret "encrypted"
+        boolean is_default
+    }
+
+    %% ---------- Metric description layer [META] ----------
+    METRIC_DEFINITION ||--o{ METRIC_DIMENSION : has
+    METRIC_DEFINITION ||--o{ FORECAST_JOB : "is forecast by"
+    METRIC_DEFINITION }o--|| MART_METRIC : "sourced from"
+    METRIC_DEFINITION }o--o| LD_METRIC : "references"
+
+    METRIC_DEFINITION {
+        uuid id PK
+        uuid project_id FK
+        string name
+        string source_table "CH mart"
+        string timestamp_column
+        string value_column
+        string grain "hourly | daily | weekly"
+        int default_horizon
+        int default_context_length
+        string sparse_policy "skip | aggregate"
+        uuid lightdash_metric_ref FK "nullable -> LD_METRIC"
+        string dbt_model_ref
+        timestamp created_at
+    }
+
+    METRIC_DIMENSION {
+        uuid id PK
+        uuid metric_definition_id FK
+        string name "city | store_id | merchant_id ..."
+        string ch_type "LowCardinality(String) | String"
+        boolean is_default_slice
+    }
+
+    %% ---------- Forecast service (TimesFM) [META + CH] ----------
+    FORECAST_JOB ||--o{ FORECAST_RUN : produces
+    FORECAST_RUN ||--o{ FORECAST_SEGMENT : evaluates
+    FORECAST_RUN ||--o{ FORECAST_POINT : writes
+    FORECAST_SEGMENT ||--o{ FORECAST_POINT : "groups"
+
+    FORECAST_JOB {
+        uuid id PK
+        uuid metric_definition_id FK
+        json dimensions "subset for this job"
+        string grain
+        int horizon
+        int context_length
+        string model_name "timesfm-2.5"
+        string schedule "cron"
+        string output_table "CH forecast_*"
+        boolean enabled
+        timestamp created_at
+    }
+
+    FORECAST_RUN {
+        uuid id PK
+        uuid forecast_job_id FK
+        string status "pending | running | success | failed"
+        timestamp started_at
+        timestamp finished_at
+        string model_version
+        int segments_total
+        int segments_skipped
+        string error "nullable"
+    }
+
+    FORECAST_SEGMENT {
+        uuid id PK
+        uuid forecast_run_id FK
+        string segment_key "hash of dim values"
+        json dim_values
+        int n_points
+        boolean is_sparse
+        float wape
+        float mape
+    }
+
+    FORECAST_POINT {
+        string forecast_run_id FK "[CH]"
+        string metric_name
+        string segment_key
+        datetime forecast_ts
+        int horizon_step
+        float y_hat
+        float p10
+        float p50
+        float p90
+        float y_actual "nullable"
+        string model_name
+        datetime created_at
+    }
+
+    %% ---------- Dependency agent (pi.dev) [META] ----------
+    DEPENDENCY_ANALYSIS ||--o{ METRIC_DEPENDENCY : finds
+    METRIC_DEPENDENCY ||--o{ DEPENDENCY_EXPLANATION : "explained by"
+    METRIC_DEPENDENCY }o--|| METRIC_DEFINITION : source
+    METRIC_DEPENDENCY }o--|| METRIC_DEFINITION : target
+
+    DEPENDENCY_ANALYSIS {
+        uuid id PK
+        uuid project_id FK
+        uuid target_metric_id FK
+        timestamp window_start
+        timestamp window_end
+        string method "lagged_corr | granger | mutual_info"
+        int max_lag
+        string status
+        timestamp created_at
+    }
+
+    METRIC_DEPENDENCY {
+        uuid id PK
+        uuid dependency_analysis_id FK
+        uuid source_metric_id FK
+        uuid target_metric_id FK
+        int lag "shift in grain units"
+        float score "corr / strength"
+        string direction "leads | lags | co-moves"
+        float confidence
+    }
+
+    DEPENDENCY_EXPLANATION {
+        uuid id PK
+        uuid metric_dependency_id FK
+        string text "LLM narrative"
+        float confidence
+        string caveats "correlation != causation"
+        string llm_model
+        timestamp created_at
+    }
+
+    %% ---------- Analytical store [CH] ----------
+    MART_METRIC ||--o{ ACTUAL_VS_FORECAST : "actual side"
+    FORECAST_POINT ||--o{ ACTUAL_VS_FORECAST : "forecast side"
+
+    MART_METRIC {
+        datetime ts PK "[CH] dbt-built"
+        string city
+        string store_id
+        string merchant_id
+        float value "delivered_orders | gmv | ..."
+    }
+
+    ACTUAL_VS_FORECAST {
+        datetime ts "[CH] dbt view"
+        string segment_key
+        float y_hat
+        float y_actual
+        float error_abs
+        float ape
+    }
+
+    %% ---------- Lightdash-owned (read-only refs) [LD] ----------
+    LD_PROJECT ||--o{ LD_DBT_MODEL : contains
+    LD_DBT_MODEL ||--o{ LD_METRIC : exposes
+
+    LD_PROJECT {
+        uuid id PK "[LD]"
+        string name
+    }
+
+    LD_DBT_MODEL {
+        uuid id PK "[LD]"
+        uuid ld_project_id FK
+        string name
+    }
+
+    LD_METRIC {
+        uuid id PK "[LD]"
+        uuid ld_dbt_model_id FK
+        string name
+        string sql
+    }
