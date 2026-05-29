@@ -2,14 +2,16 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
     container_name: norn-clickhouse
+    # Local dev/test only: ports bound to loopback so the dev-convention
+    # password is never reachable off-host. Cloud deploys use env-var secrets
+    # (Plan 2+ roadmap), not this file.
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
     environment:
       CLICKHOUSE_DB: norn
       CLICKHOUSE_USER: norn
       CLICKHOUSE_PASSWORD: norn
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     ulimits:
       nofile:
         soft: 262144
