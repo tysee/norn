@@ -56,3 +56,33 @@ def test_run_job_no_dimensions_single_segment(ch):
         parameters={"r": run_id},
     ).result_rows
     assert seg == [("all",)]
+
+
+def test_run_job_uses_injected_forecaster(ch):
+    from datetime import datetime, timedelta
+
+    ch.command(
+        "CREATE TABLE test_mart (ts DateTime, region String, value Float64) "
+        "ENGINE = MergeTree ORDER BY (region, ts)"
+    )
+    start = datetime(2026, 1, 1)
+    ch.insert(
+        "test_mart",
+        [[start + timedelta(days=d), "eu", float(d)] for d in range(20)],
+        column_names=["ts", "region", "value"],
+    )
+
+    class ConstForecaster:
+        def forecast(self, values, horizon):
+            return [
+                {"horizon_step": h, "y_hat": 42.0, "p10": 40.0, "p50": 42.0, "p90": 44.0}
+                for h in range(1, horizon + 1)
+            ]
+
+    job = ForecastJob(metric="value", source="test_mart", dimensions=["region"], horizon=4)
+    run_id = run_job(job, client=ch, forecaster=ConstForecaster())
+    rows = ch.query(
+        "SELECT y_hat FROM forecast_point WHERE forecast_run_id=%(r)s LIMIT 1",
+        parameters={"r": run_id},
+    ).result_rows
+    assert rows == [(42.0,)]
