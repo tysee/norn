@@ -1,0 +1,5 @@
+fastapi>=0.110
+uvicorn>=0.29
+torch>=2.2
+timesfm>=2.5
+pydantic>=2.6

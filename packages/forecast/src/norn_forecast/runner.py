@@ -1,3 +1,12 @@
+"""
+packages/forecast/src/norn_forecast/runner.py
+
+Прогон forecast-job: извлечение рядов по сегментам из ClickHouse, прогноз
+выбранным форкастером и запись строк контракта (forecast_point/forecast_run).
+
+Методы:
+- run_job(job, client, forecaster=None) -> str — выполняет job, возвращает run_id.
+"""
 from __future__ import annotations
 
 import uuid
@@ -6,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from clickhouse_connect.driver.client import Client
 
 from norn_core.contract import ForecastJob, Grain
-from norn_forecast.baseline import seasonal_naive_forecast
+from norn_forecast.forecaster import Forecaster, make_forecaster
 
 _STEP = {Grain.daily: timedelta(days=1), Grain.hourly: timedelta(hours=1)}
 
@@ -39,8 +48,9 @@ def _series(client: Client, job: ForecastJob, dims: dict) -> tuple[list[datetime
     return ts, vals
 
 
-def run_job(job: ForecastJob, client: Client) -> str:
+def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = None) -> str:
     run_id = str(uuid.uuid4())
+    forecaster = forecaster or make_forecaster(job)
     started = datetime.now(UTC)
     step = _STEP[job.grain]
     segments = _segments(client, job)
@@ -52,7 +62,7 @@ def run_job(job: ForecastJob, client: Client) -> str:
             continue
         seg_key = _segment_key(dims)
         last_ts = ts[-1]
-        fc = seasonal_naive_forecast(vals, job.horizon, job.seasonality)
+        fc = forecaster.forecast(vals, job.horizon)
         now = datetime.now(UTC)
         for row in fc:
             points.append([

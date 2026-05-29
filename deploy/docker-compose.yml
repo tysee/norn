@@ -7,7 +7,9 @@ services:
     # (Plan 2+ roadmap), not this file.
     ports:
       - "127.0.0.1:8123:8123"
-      - "127.0.0.1:9000:9000"
+      # Native protocol on a non-default host port (default 9000 commonly clashes
+      # with minio/other local services); HTTP 8123 is what dbt/Lightdash use.
+      - "127.0.0.1:9009:9000"
     environment:
       CLICKHOUSE_DB: norn
       CLICKHOUSE_USER: norn
@@ -19,5 +21,77 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
 
+  lightdash-db:
+    image: pgvector/pgvector:pg15   # Lightdash metadata DB needs the pgvector extension
+    container_name: norn-lightdash-db
+    environment:
+      POSTGRES_USER: lightdash
+      POSTGRES_PASSWORD: lightdash
+      POSTGRES_DB: lightdash
+    volumes:
+      - lightdash-db-data:/var/lib/postgresql/data
+
+  headless-browser:
+    image: browserless/chrome:latest   # Lightdash's headless browser (browserless API on :3000)
+    container_name: norn-headless-browser
+
+  # Lightdash (latest) requires S3-compatible storage; local MinIO covers it.
+  minio:
+    image: minio/minio:latest
+    container_name: norn-minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: lightdash
+      MINIO_ROOT_PASSWORD: lightdash-minio-pw
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: norn-minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until /usr/bin/mc alias set local http://minio:9000 lightdash lightdash-minio-pw; do sleep 2; done;
+      /usr/bin/mc mb -p local/lightdash || true;
+      exit 0;"
+
+  lightdash:
+    image: lightdash/lightdash:latest
+    platform: linux/amd64              # lightdash image is amd64-only; emulate on Apple Silicon
+    container_name: norn-lightdash
+    depends_on:
+      - lightdash-db
+      - headless-browser
+      - clickhouse
+      - minio
+    environment:
+      PGHOST: lightdash-db
+      PGPORT: 5432
+      PGUSER: lightdash
+      PGPASSWORD: lightdash
+      PGDATABASE: lightdash
+      LIGHTDASH_SECRET: local-dev-secret
+      SECURE_COOKIES: "false"
+      TRUST_PROXY: "true"
+      SITE_URL: http://localhost:8080
+      PORT: "8080"
+      HEADLESS_BROWSER_HOST: headless-browser
+      HEADLESS_BROWSER_PORT: "3000"
+      DBT_PROJECT_DIR: /usr/app/dbt
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: lightdash
+      S3_ACCESS_KEY: lightdash
+      S3_SECRET_KEY: lightdash-minio-pw
+      S3_FORCE_PATH_STYLE: "true"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./dbt:/usr/app/dbt
+
 volumes:
   clickhouse-data: {}
+  lightdash-db-data: {}
+  minio-data: {}

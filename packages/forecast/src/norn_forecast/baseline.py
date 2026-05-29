@@ -1,3 +1,13 @@
+"""
+packages/forecast/src/norn_forecast/baseline.py
+
+Baseline-форкастер: seasonal-naive с эмпирическими интервалами (80%).
+Заглушка до TimesFM; держит пайплайн рабочим.
+
+Методы:
+- seasonal_naive_forecast(values, horizon, seasonality) -> list[dict] —
+  точечный прогноз и границы p10/p50/p90 на горизонт.
+"""
 from __future__ import annotations
 
 import numpy as np

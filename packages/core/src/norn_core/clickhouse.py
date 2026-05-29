@@ -1,3 +1,12 @@
+"""
+packages/core/src/norn_core/clickhouse.py
+
+Фабрика клиента ClickHouse и парсер DSN. Единая точка подключения к warehouse.
+
+Методы:
+- parse_dsn(dsn) -> dict — разбор строки подключения (host/port/user/db/secure).
+- get_client(dsn=None) -> Client — клиент из DSN или env NORN_CLICKHOUSE_URL.
+"""
 from __future__ import annotations
 
 import os

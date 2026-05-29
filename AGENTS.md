@@ -23,7 +23,8 @@ See docs in `docs` folder. As primary source of truth for the project. If you ch
 - Prefer fewer lines of code with higher quality instead of long and complex code.
 - "Do not reinvent the wheel" use the best tools and libraries for the job. Don't try to build things from scratch.
 - **ALWAYS check already implemented features before implementing new ones.**
-- Never commit code or interact with git by yourself. Ask for review and approval from human.
+- Agents may create branches and commit on a feature branch (needed for TDD/workflow steps). Do NOT merge, push, or open PRs without explicit human approval.
+- Note: the Expo / React Native / `bun lint` / `bun typecheck` sections of this file apply to the mobile client, not the Python `norn` platform (use ruff/pyright/pytest there).
 
 ### Think Before Coding
 

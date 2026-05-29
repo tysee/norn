@@ -70,6 +70,20 @@ norn up         # поднять сайдкар: forecast worker + agent (FastAP
 
 `deploy/docker-compose.yml` запускает сайдкар, указывающий на **существующие** ClickHouse и Lightdash (через env). Аналитику не нужно ничего конфигурировать вручную сверх DSN.
 
+### Локальный BI-стек (отладка)
+
+`deploy/docker-compose.yml` поднимает локально: ClickHouse + Lightdash (+ его
+Postgres + headless-browser) + generic dbt-проект `deploy/dbt/` (profiles → ClickHouse,
+модели `mart_metric`, `actual_vs_forecast`). TimesFM-воркер — отдельный torch-pinned
+контейнер (`deploy/timesfm.Dockerfile`), forecast-слой ходит в него по HTTP за
+`Forecaster`-интерфейсом (baseline остаётся фолбэком). Наполнение данными
+(`raw_candles`) — отдельно, вне платформы.
+
+**MCP-слой (агенты):** `norn mcp` поднимает FastMCP-сервер (streamable-http) с
+инструментами get_forecast / get_expected_range / check_ladder_rungs /
+get_divergence / get_calibration поверх таблиц `forecast_point` / `forecast_segment`.
+«Lightdash для людей, MCP для агентов». `get_dependencies` (BTC↔TON) — Plan 5.
+
 ---
 
 ## 5. Совместимость Python 3.14+ (честный риск)

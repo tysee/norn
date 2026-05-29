@@ -8,6 +8,8 @@ flowchart TB
         direction TB
         agent["packages/agent<br/>Агент анализа зависимостей<br/>(pi.dev)"]
         forecast["packages/forecast<br/>Сервис прогнозов<br/>(TimesFM 2.5 worker)"]
+        mcp["MCP server<br/>(FastMCP, агентский интерфейс)"]
+        tfmworker["TimesFM worker<br/>(FastAPI, torch container)"]
         integ["packages/integration<br/>Обвязка: dbt + Lightdash + ClickHouse"]
         meta[("addon Postgres<br/>метаданные: jobs, runs,<br/>deps, metric_def")]
     end
@@ -34,6 +36,10 @@ flowchart TB
 
     forecast -->|extract series| ch
     forecast -->|write-back forecast_point| ch
+    forecast -->|HTTP /forecast| tfmworker
+    lightdash -->|reads dbt actual_vs_forecast| ch
+    mcp -->|reads forecast_point / forecast_segment| ch
+    agent -->|MCP tools| mcp
     forecast --> meta
 
     agent -->|читает ряды| ch
@@ -46,5 +52,5 @@ flowchart TB
 
     classDef ours fill:#E8C8BA,stroke:#B8553E,color:#1C1814;
     classDef ext fill:#EFE6CF,stroke:#8C8275,color:#1C1814;
-    class agent,forecast,integ,meta,cli ours;
+    class agent,forecast,mcp,integ,meta,cli ours;
     class lightdash,ldpg,ch,dbt ext;
