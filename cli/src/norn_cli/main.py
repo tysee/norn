@@ -57,6 +57,14 @@ def calibrate(job_path: str = typer.Argument(..., help="path to a forecast-job Y
 
 
 @app.command()
+def mcp() -> None:
+    """Run the MCP server (streamable-http) so agents can query forecasts."""
+    from norn_forecast.mcp_server import build_server
+
+    build_server().run(transport="streamable-http")
+
+
+@app.command()
 def up() -> None:
     """Bring up the local sidecar (ClickHouse) in Docker and apply the schema."""
     subprocess.run(
