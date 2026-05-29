@@ -73,3 +73,27 @@ def test_get_divergence_positions(ch):
 def test_get_divergence_no_forecast(ch):
     d = mcp_tools.get_divergence(ch, "close", "symbol=NOPE", 100.0)
     assert d["position"] == "no_forecast" and d["in_band"] is None
+
+
+def _seed_segment(ch, run_id, metric="close", segment="symbol=BTC"):
+    ch.insert(
+        "forecast_segment",
+        [[run_id, metric, segment, 21, 0, 0.05, 0.04, 0.83, -0.1, datetime(2026, 5, 30)]],
+        column_names=[
+            "forecast_run_id", "metric_name", "segment_key", "n_points", "is_sparse",
+            "wape", "mape", "coverage", "bias", "created_at",
+        ],
+    )
+
+
+def test_get_calibration_returns_latest(ch):
+    _seed_segment(ch, "cal-A")
+    out = mcp_tools.get_calibration(ch, "close", "symbol=BTC")
+    assert out["available"] is True
+    assert out["coverage"] == pytest.approx(0.83)
+    assert out["n_points"] == 21
+
+
+def test_get_calibration_missing(ch):
+    out = mcp_tools.get_calibration(ch, "close", "symbol=NOPE")
+    assert out == {"available": False}

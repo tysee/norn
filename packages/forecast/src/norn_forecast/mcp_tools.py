@@ -117,3 +117,22 @@ def get_divergence(
         "p90": p["p90"],
         "current": current_value,
     }
+
+
+def get_calibration(client: Client, metric: str, segment: str) -> dict:
+    rows = client.query(
+        "SELECT coverage, wape, mape, bias, n_points FROM forecast_segment "
+        "WHERE metric_name=%(m)s AND segment_key=%(s)s ORDER BY created_at DESC LIMIT 1",
+        parameters={"m": metric, "s": segment},
+    ).result_rows
+    if not rows:
+        return {"available": False}
+    c = rows[0]
+    return {
+        "available": True,
+        "coverage": c[0],
+        "wape": c[1],
+        "mape": c[2],
+        "bias": c[3],
+        "n_points": c[4],
+    }
