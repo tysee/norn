@@ -24,3 +24,10 @@ def test_parse_dsn_https_default_port():
 def test_parse_dsn_requires_database():
     with pytest.raises(ValueError):
         parse_dsn("http://user:pw@host:8123/")
+
+
+def test_parse_dsn_error_does_not_leak_credentials():
+    # The error must never echo the DSN — it carries the password.
+    with pytest.raises(ValueError) as exc:
+        parse_dsn("http://user:supersecret@host:8123/")
+    assert "supersecret" not in str(exc.value)

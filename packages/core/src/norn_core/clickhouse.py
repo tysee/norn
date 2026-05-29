@@ -14,7 +14,8 @@ def parse_dsn(dsn: str) -> dict:
     secure = u.scheme == "https"
     database = u.path.lstrip("/")
     if not database:
-        raise ValueError(f"DSN missing database: {dsn!r}")
+        # Never echo the DSN — it carries the ClickHouse password (credential leak).
+        raise ValueError("ClickHouse DSN is missing the database path component")
     return {
         "host": u.hostname,
         "port": u.port or (8443 if secure else 8123),
