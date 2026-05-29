@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from clickhouse_connect.driver.client import Client
 
@@ -41,7 +41,7 @@ def _series(client: Client, job: ForecastJob, dims: dict) -> tuple[list[datetime
 
 def run_job(job: ForecastJob, client: Client) -> str:
     run_id = str(uuid.uuid4())
-    started = datetime.utcnow()
+    started = datetime.now(UTC)
     step = _STEP[job.grain]
     segments = _segments(client, job)
     points: list[list] = []
@@ -53,7 +53,7 @@ def run_job(job: ForecastJob, client: Client) -> str:
         seg_key = _segment_key(dims)
         last_ts = ts[-1]
         fc = seasonal_naive_forecast(vals, job.horizon, job.seasonality)
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         for row in fc:
             points.append([
                 run_id, job.metric, seg_key,
@@ -76,7 +76,7 @@ def run_job(job: ForecastJob, client: Client) -> str:
     client.insert(
         "forecast_run",
         [[run_id, job.metric, "success", job.model, "v0",
-          started, datetime.utcnow(), len(segments), 0, None]],
+          started, datetime.now(UTC), len(segments), 0, None]],
         column_names=[
             "forecast_run_id", "forecast_job", "status", "model_name", "model_version",
             "started_at", "finished_at", "segments_total", "segments_skipped", "error",
