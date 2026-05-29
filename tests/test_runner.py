@@ -86,3 +86,50 @@ def test_run_job_uses_injected_forecaster(ch):
         parameters={"r": run_id},
     ).result_rows
     assert rows == [(42.0,)]
+
+
+def test_run_job_uses_recent_context(ch):
+    ch.command(
+        "CREATE TABLE test_mart (ts DateTime, region String, value Float64) "
+        "ENGINE = MergeTree ORDER BY (region, ts)"
+    )
+    start = datetime(2026, 1, 1)
+    rows = []
+    for d in range(20):
+        ts = start + timedelta(days=d)
+        if d < 15:
+            val = 1.0
+        else:
+            val = 100.0 + (d - 15)  # 100, 101, 102, 103, 104
+        rows.append([ts, "eu", val])
+    ch.insert("test_mart", rows, column_names=["ts", "region", "value"])
+
+    job = ForecastJob(
+        metric="value",
+        source="test_mart",
+        dimensions=["region"],
+        horizon=3,
+        context_length=5,
+        seasonality=7,
+    )
+    run_id = run_job(job, client=ch)
+
+    # Compare on the calendar date (ClickHouse-side, timezone-stable) to avoid
+    # client-side naive-datetime round-trip skew.
+    first_date, max_y_hat = ch.query(
+        "SELECT toDate(min(forecast_ts)), max(y_hat) FROM forecast_point "
+        "WHERE forecast_run_id = %(r)s",
+        parameters={"r": run_id},
+    ).result_rows[0]
+
+    last_bar_date = ch.query(
+        "SELECT toDate(max(ts)) FROM test_mart WHERE region = 'eu'"
+    ).result_rows[0][0]
+
+    # Forecast continues AFTER the most-recent bar, not after the 5th-oldest bar
+    # (which the old `ORDER BY ts LIMIT` would have selected). The oldest-5 rows
+    # span 2026-01-01..05, so the buggy forecast would have started ~2026-01-06.
+    assert first_date == last_bar_date + timedelta(days=1)
+    # context_length 5 < seasonality 7, so the baseline carries the last value
+    # (~104) from the recent window, NOT the stale 1.0 from the oldest rows.
+    assert max_y_hat >= 50.0
