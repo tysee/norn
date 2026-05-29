@@ -79,6 +79,11 @@ Postgres + headless-browser) + generic dbt-проект `deploy/dbt/` (profiles 
 `Forecaster`-интерфейсом (baseline остаётся фолбэком). Наполнение данными
 (`raw_candles`) — отдельно, вне платформы.
 
+**MCP-слой (агенты):** `norn mcp` поднимает FastMCP-сервер (streamable-http) с
+инструментами get_forecast / get_expected_range / check_ladder_rungs /
+get_divergence / get_calibration поверх таблиц `forecast_point` / `forecast_segment`.
+«Lightdash для людей, MCP для агентов». `get_dependencies` (BTC↔TON) — Plan 5.
+
 ---
 
 ## 5. Совместимость Python 3.14+ (честный риск)
