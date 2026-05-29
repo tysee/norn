@@ -1,0 +1,15 @@
+[project]
+name = "norn-cli"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = ["norn-core", "norn-integration", "norn-forecast", "typer>=0.12"]
+
+[project.scripts]
+norn = "norn_cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/norn_cli"]
