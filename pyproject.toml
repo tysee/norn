@@ -11,6 +11,7 @@ members = ["packages/*", "cli"]
 norn-core = { workspace = true }
 norn-integration = { workspace = true }
 norn-forecast = { workspace = true }
+norn-agent = { workspace = true }
 norn-cli = { workspace = true }
 
 [dependency-groups]
