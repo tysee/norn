@@ -94,6 +94,24 @@ def test_forecast_covariates_settings(tmp_path, monkeypatch):
     assert s.forecast.covariates.xreg_mode == "xreg+timesfm"
 
 
+def test_agent_provider_defaults_and_override(tmp_path, monkeypatch):
+    (tmp_path / "agent.yml").write_text(
+        "max_lag: 10\ncontext_length: 512\nmethods: [a]\n"
+        "granger_min_points_factor: 3\ngranger_significance: 0.05\n"
+        "provider: ollama\nmodel: gemma3n:e2b\nbase_url: null\n"
+    )
+    for n in ("database", "forecast", "mcp"):
+        (tmp_path / f"{n}.yml").write_text("{}\n")
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    from norn_core.config import get_settings
+    s = get_settings(refresh=True)
+    assert s.agent.provider == "ollama"
+    assert s.agent.model == "gemma3n:e2b"
+    assert s.agent.base_url is None
+    monkeypatch.setenv("NORN_AGENT_PROVIDER", "anthropic-api")
+    assert get_settings(refresh=True).agent.provider == "anthropic-api"  # env overrides yaml
+
+
 def test_get_settings_is_cached_within_a_run(tmp_path, monkeypatch):
     # Two get_settings() calls (no refresh) must return the SAME object,
     # proving the lru_cache holds on the hot forecast path.

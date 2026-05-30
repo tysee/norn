@@ -110,7 +110,9 @@ class ForecastSettings(_YamlSection):
 class AgentSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_AGENT_", env_nested_delimiter="__", extra="ignore")
     YAML_FILE: ClassVar[str] = "agent.yml"
-    model: str = "anthropic:claude-sonnet-4-5"
+    provider: str = "ollama"   # ollama | openai-api | openai-oauth | openrouter | anthropic-api
+    model: str = "gemma3n:e2b"
+    base_url: str | None = None
     max_lag: int = 10
     context_length: int = 512
     methods: list[str] = ["lagged_cross_correlation", "granger"]
