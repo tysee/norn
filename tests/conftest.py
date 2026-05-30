@@ -8,6 +8,15 @@ from norn_integration.schema import apply_schema
 DSN = os.environ.get("NORN_CLICKHOUSE_URL", "http://norn:norn@localhost:8123/norn")
 
 
+@pytest.fixture(autouse=True)
+def _reset_settings_cache():
+    import norn_core.config as _cfg
+
+    _cfg._cached.cache_clear()
+    yield
+    _cfg._cached.cache_clear()
+
+
 @pytest.fixture(scope="session")
 def ch():
     client = get_client(DSN)

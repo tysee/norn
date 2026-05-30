@@ -1,8 +1,33 @@
 from typer.testing import CliRunner
 
+import norn_cli.main as cli_main
 from norn_cli.main import app
 
 runner = CliRunner()
+
+
+class _FakeClient:
+    """Recording stand-in for a ClickHouse client (no real connection)."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def command(self, *_args, **_kwargs) -> None:  # used by apply_schema
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_schema_apply_closes_client(monkeypatch):
+    """One-shot commands must release the ClickHouse connection pool."""
+    fake = _FakeClient()
+    monkeypatch.setattr(cli_main, "get_client", lambda *a, **k: fake)
+
+    result = runner.invoke(app, ["schema-apply"])
+
+    assert result.exit_code == 0, result.output
+    assert fake.closed is True
 
 
 def test_forecast_command_runs_and_prints_run_id(ch, tmp_path, monkeypatch):

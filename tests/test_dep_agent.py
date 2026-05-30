@@ -20,6 +20,22 @@ def test_judge_returns_structured_decision_with_testmodel():
     assert len(decision.relations) >= 1
 
 
+def test_judge_degrades_on_model_error():
+    class _BoomAgent:
+        def run_sync(self, prompt):
+            raise RuntimeError("model/transport failure")
+
+    measurements = [
+        DependencyMeasurement(method="lagged_cross_correlation", lag=2, score=0.7,
+                              direction="source_leads", p_value=None, confidence=0.7),
+    ]
+    meta = {"source_segment": "segment=A", "target_segment": "segment=B",
+            "metric_name": "log_return"}
+    decision = judge_dependencies(measurements, meta, agent=_BoomAgent())
+    assert isinstance(decision, DependencyDecision)
+    assert decision.relations == []
+
+
 def test_build_agent_model_from_settings(monkeypatch):
     import norn_agent.agent as am
 

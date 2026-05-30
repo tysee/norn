@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -41,48 +42,70 @@ COMPOSE = Path(__file__).resolve().parents[3] / "deploy" / "docker-compose.yml"
 @app.command("schema-apply")
 def schema_apply() -> None:
     """Apply the forecast-contract schema to ClickHouse (idempotent)."""
+    # --- one-shot CLI: own the connection pool and release it on exit ---
     client = get_client()
-    apply_schema(client)
-    typer.echo("schema applied")
+    try:
+        apply_schema(client)
+        typer.echo("schema applied")
+    finally:
+        client.close()
 
 
 @app.command()
-def forecast(job_path: str = typer.Argument(..., help="path to a forecast-job YAML")) -> None:
+def forecast(
+    job_path: Annotated[str, typer.Argument(help="path to a forecast-job YAML")],
+) -> None:
     """Run a forecast job: extract -> forecast -> write contract rows."""
     # --- читаем декларативный job из YAML ---
     job = ForecastJob.from_yaml(job_path)
     # --- подключаемся к хранилищу и гарантируем актуальность схемы ---
+    # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
-    apply_schema(client)
-    # --- запускаем прогон и печатаем идентификатор запуска ---
-    run_id = run_job(job, client=client)
-    typer.echo(f"run_id={run_id}")
+    try:
+        apply_schema(client)
+        # --- запускаем прогон и печатаем идентификатор запуска ---
+        run_id = run_job(job, client=client)
+        typer.echo(f"run_id={run_id}")
+    finally:
+        client.close()
 
 
 @app.command()
-def calibrate(job_path: str = typer.Argument(..., help="path to a forecast-job YAML")) -> None:
+def calibrate(
+    job_path: Annotated[str, typer.Argument(help="path to a forecast-job YAML")],
+) -> None:
     """Rolling-origin calibration: writes coverage/wape/mape/bias to forecast_segment."""
     # --- читаем тот же job-контракт, что и для прогноза ---
     job = ForecastJob.from_yaml(job_path)
     # --- подключаемся к хранилищу и гарантируем актуальность схемы ---
+    # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
-    apply_schema(client)
-    # --- прогоняем rolling-origin калибровку и печатаем run_id ---
-    run_id = calibrate_job(job, client=client)
-    typer.echo(f"calibration run_id={run_id}")
+    try:
+        apply_schema(client)
+        # --- прогоняем rolling-origin калибровку и печатаем run_id ---
+        run_id = calibrate_job(job, client=client)
+        typer.echo(f"calibration run_id={run_id}")
+    finally:
+        client.close()
 
 
 @app.command()
-def deps(job_path: str = typer.Argument(..., help="path to a dependency-job YAML")) -> None:
+def deps(
+    job_path: Annotated[str, typer.Argument(help="path to a dependency-job YAML")],
+) -> None:
     """Analyze lead/lag dependencies and write evidence + the agent's explanation."""
     # --- читаем декларативный dependency-job из YAML ---
     job = DependencyJob.from_yaml(job_path)
     # --- подключаемся к хранилищу и гарантируем актуальность схемы ---
+    # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
-    apply_schema(client)
-    # --- считаем зависимости, пишем evidence и печатаем run_id ---
-    run_id = analyze_dependencies(job, client=client)
-    typer.echo(f"deps run_id={run_id}")
+    try:
+        apply_schema(client)
+        # --- считаем зависимости, пишем evidence и печатаем run_id ---
+        run_id = analyze_dependencies(job, client=client)
+        typer.echo(f"deps run_id={run_id}")
+    finally:
+        client.close()
 
 
 @app.command()

@@ -1,6 +1,6 @@
 import textwrap
 
-from norn_core.config import get_settings
+from norn_core.config import DatabaseSettings, get_settings
 
 
 def _write_config(d):
@@ -57,3 +57,32 @@ def test_agent_granger_settings(tmp_path, monkeypatch):
     s = get_settings(refresh=True)
     assert s.agent.granger_significance == 0.05
     assert s.agent.granger_min_points_factor == 3
+
+
+def test_yaml_file_not_a_setting_field(tmp_path, monkeypatch):
+    # YAML_FILE is a ClassVar, not an overridable settings field:
+    # (1) it must not appear in model_dump(), and
+    # (2) setting NORN_DB_YAML_FILE must NOT change which file is loaded.
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.delenv("NORN_CLICKHOUSE_URL", raising=False)
+
+    assert "YAML_FILE" not in DatabaseSettings().model_dump()
+
+    # Real config: database.yml has host=chhost; the "decoy" file does not.
+    (tmp_path / "database.yml").write_text("host: chhost\n")
+    (tmp_path / "decoy.yml").write_text("host: decoyhost\n")
+    monkeypatch.setenv("NORN_DB_YAML_FILE", "decoy.yml")
+
+    # Loader still uses the class default (database.yml), ignoring the env override.
+    assert DatabaseSettings().host == "chhost"
+
+
+def test_get_settings_is_cached_within_a_run(tmp_path, monkeypatch):
+    # Two get_settings() calls (no refresh) must return the SAME object,
+    # proving the lru_cache holds on the hot forecast path.
+    _write_config(tmp_path)
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.delenv("NORN_CLICKHOUSE_URL", raising=False)
+    first = get_settings()
+    second = get_settings()
+    assert first is second

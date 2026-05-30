@@ -25,6 +25,8 @@ from datetime import UTC, datetime
 
 from clickhouse_connect.driver.client import Client
 
+from norn_core.clickhouse import _safe_identifier
+
 from norn_agent.agent import judge_dependencies
 from norn_agent.contract import DependencyJob, DependencyMeasurement
 from norn_agent.methods import METHODS
@@ -56,6 +58,7 @@ def _prior_measurements(client: Client, job: DependencyJob) -> list[DependencyMe
 
 
 def _series(client: Client, mart: str, metric: str, segment: str, context_length: int):
+    mart = _safe_identifier(mart)
     rows = client.query(
         f"SELECT ts, value FROM (SELECT ts, value FROM {mart} "
         "WHERE metric_name=%(m)s AND segment_key=%(s)s ORDER BY ts DESC "
@@ -92,7 +95,7 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
     # --- compute: прогнать выбранные методы-улики (granger получает тюнинги из конфига) ---
     from norn_core.config import get_settings
 
-    a = get_settings(refresh=True).agent
+    a = get_settings().agent
     measurements = []
     for name in job.methods:
         if name == "granger":
@@ -131,7 +134,7 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
     decision = judge_dependencies(measurements, meta, prior_measurements=prior, agent=agent)
     from norn_core.config import get_settings
 
-    model_name = get_settings(refresh=True).agent.model
+    model_name = get_settings().agent.model
     # --- write-back: сохранить объяснения агента в dependency_explanation ---
     exp_rows = [
         [run_id, job.metric, r.source_segment, r.target_segment, r.lag, r.direction,

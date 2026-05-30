@@ -41,7 +41,7 @@ class DependencyJob(BaseModel):
         """Fill unset tunables from the config layer (explicit job values win)."""
         from norn_core.config import get_settings
 
-        a = get_settings(refresh=True).agent
+        a = get_settings().agent
         return self.model_copy(update={
             "max_lag": self.max_lag if self.max_lag is not None else a.max_lag,
             "context_length": self.context_length if self.context_length is not None else a.context_length,

@@ -11,6 +11,8 @@ Protocol две реализации — лёгкую baseline и тяжёлую
   horizon_step/y_hat/p10/p50/p90).
 - BaselineForecaster — обёртка над seasonal_naive_forecast (seasonal-naive).
 - TimesFMForecaster — HTTP-клиент к torch-воркеру: POST /forecast, без torch здесь.
+  Владеет httpx.Client, если тот не внедрён извне: close()/контекст-менеджер
+  закрывают пул соединений только для собственного клиента.
 - make_forecaster(job, timesfm_url=None) -> Forecaster — фабрика: по job.model
   возвращает TimesFM (url из конфига) либо baseline (с сезонностью job).
 """
@@ -49,6 +51,9 @@ class TimesFMForecaster:
         quantiles: tuple[float, ...] = (0.1, 0.5, 0.9),
     ) -> None:
         self._base = base_url.rstrip("/")
+        # Own the client only when we created it; an injected client is the
+        # caller's to close (so we never tear down a shared connection pool).
+        self._owns_client = client is None
         self._client = client or httpx.Client(timeout=60.0)
         self._quantiles = list(quantiles)
 
@@ -60,15 +65,26 @@ class TimesFMForecaster:
         resp.raise_for_status()
         return resp.json()["rows"]
 
+    def close(self) -> None:
+        """Close the underlying httpx.Client only if this forecaster owns it."""
+        if self._owns_client:
+            self._client.close()
+
+    def __enter__(self) -> "TimesFMForecaster":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
 
 def make_forecaster(job: ForecastJob, timesfm_url: str | None = None) -> Forecaster:
     from norn_core.config import get_settings
 
     if job.model == "timesfm-2.5":
         if timesfm_url is None:
-            timesfm_url = get_settings(refresh=True).forecast.timesfm.worker_url
-        q = tuple(get_settings(refresh=True).forecast.quantiles)
+            timesfm_url = get_settings().forecast.timesfm.worker_url
+        q = tuple(get_settings().forecast.quantiles)
         return TimesFMForecaster(timesfm_url, quantiles=q)
 
-    q = tuple(get_settings(refresh=True).forecast.quantiles)
+    q = tuple(get_settings().forecast.quantiles)
     return BaselineForecaster(job.seasonality if job.seasonality is not None else 7, q)

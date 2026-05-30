@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 
 from clickhouse_connect.driver.client import Client
 
+from norn_core.clickhouse import _safe_identifier
 from norn_core.contract import ForecastJob, Grain
 from norn_forecast.forecaster import Forecaster, make_forecaster
 
@@ -32,9 +33,10 @@ _STEP = {Grain.daily: timedelta(days=1), Grain.hourly: timedelta(hours=1)}
 def _segments(client: Client, job: ForecastJob) -> list[dict]:
     if not job.dimensions:
         return [{}]
-    cols = ", ".join(job.dimensions)
+    source = _safe_identifier(job.source)
+    cols = ", ".join(_safe_identifier(d) for d in job.dimensions)
     rows = client.query(
-        f"SELECT DISTINCT {cols} FROM {job.source} ORDER BY {cols}"
+        f"SELECT DISTINCT {cols} FROM {source} ORDER BY {cols}"
     ).result_rows
     return [dict(zip(job.dimensions, r)) for r in rows]
 
@@ -46,10 +48,12 @@ def _segment_key(dims: dict) -> str:
 
 
 def _series(client: Client, job: ForecastJob, dims: dict) -> tuple[list[datetime], list[float]]:
-    where = " AND ".join(f"{k} = %({k})s" for k in dims) or "1 = 1"
+    source = _safe_identifier(job.source)
+    metric = _safe_identifier(job.metric)
+    where = " AND ".join(f"{_safe_identifier(k)} = %({k})s" for k in dims) or "1 = 1"
     rows = client.query(
         f"SELECT ts, val FROM ("
-        f"SELECT ts, {job.metric} AS val FROM {job.source} WHERE {where} "
+        f"SELECT ts, {metric} AS val FROM {source} WHERE {where} "
         f"ORDER BY ts DESC LIMIT {job.context_length}"
         f") ORDER BY ts",
         parameters=dims,

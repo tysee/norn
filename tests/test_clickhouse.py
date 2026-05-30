@@ -1,6 +1,23 @@
 import pytest
 
-from norn_core.clickhouse import parse_dsn
+from norn_core.clickhouse import _safe_identifier, parse_dsn
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["value", "_col", "mart_metric", "schema.table", "a1_b2.c3"],
+)
+def test_safe_identifier_accepts_valid(name):
+    assert _safe_identifier(name) == name
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["t; DROP TABLE x", "a b", "1abc", "", "col-name", "drop table", "a;b"],
+)
+def test_safe_identifier_rejects_injection(name):
+    with pytest.raises(ValueError):
+        _safe_identifier(name)
 
 
 def test_parse_dsn_full():

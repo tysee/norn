@@ -14,10 +14,24 @@ packages/core/src/norn_core/clickhouse.py
 """
 from __future__ import annotations
 
+import re
 from urllib.parse import urlparse
 
 import clickhouse_connect
 from clickhouse_connect.driver.client import Client
+
+# clickhouse-connect binds VALUES via parameters, but it cannot bind SQL
+# identifiers (table/column names) — those must be interpolated. Restrict any
+# interpolated identifier to a safe shape so attacker-controlled job fields
+# cannot inject SQL (defense-in-depth). Allows dotted db.table forms.
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
+
+
+def _safe_identifier(name: str) -> str:
+    """Return `name` if it is a safe SQL identifier, else raise ValueError."""
+    if not isinstance(name, str) or not _IDENTIFIER_RE.match(name):
+        raise ValueError(f"Unsafe SQL identifier: {name!r}")
+    return name
 
 
 def parse_dsn(dsn: str) -> dict:
@@ -42,7 +56,7 @@ def parse_dsn(dsn: str) -> dict:
 def _db_settings():
     from norn_core.config import get_settings
 
-    return get_settings(refresh=True).database
+    return get_settings().database
 
 
 def get_client(dsn: str | None = None) -> Client:
