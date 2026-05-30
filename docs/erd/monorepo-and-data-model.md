@@ -109,7 +109,18 @@ get_divergence / get_calibration поверх таблиц `forecast_point` / `f
 
 ---
 
-## 6. Связь с диаграммами
+## 6. Конфигурация (YAML-native)
+
+Все generic-настройки платформы — в центральной `config/` (разбито по логике:
+`database.yml`/`forecast.yml`/`agent.yml`/`mcp.yml`), читаются типизированным слоем
+`norn_core.config` (pydantic-settings). Приоритет: **env > YAML > дефолт**. Секреты
+(пароль БД, API-ключи) — только в env (`NORN_DB_PASSWORD`, `NORN_CLICKHOUSE_URL`).
+`NORN_CONFIG_DIR` переопределяет путь. Доменные значения (метрики/символы) в
+платформенный config НЕ попадают — это инстанс.
+
+---
+
+## 7. Связь с диаграммами
 
 - `erd.mermaid` — сущности и связи (логическая модель данных, легенда хранилищ).
 - `architecture.mermaid` — компонентная схема сайдкара: CLI → 3 пакета → ClickHouse / Lightdash / dbt / LLM.
