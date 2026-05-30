@@ -24,7 +24,13 @@ from datetime import UTC, datetime, timedelta
 from clickhouse_connect.driver.client import Client
 
 from norn_core.clickhouse import _safe_identifier
+from norn_core.config import get_settings
 from norn_core.contract import ForecastJob, Grain
+from norn_forecast.covariates import (
+    build_covariate_array,
+    covariate_series,
+    resolve_covariate_specs,
+)
 from norn_forecast.forecaster import Forecaster, make_forecaster
 
 _STEP = {Grain.daily: timedelta(days=1), Grain.hourly: timedelta(hours=1)}
@@ -70,8 +76,10 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
     forecaster = forecaster or make_forecaster(job)
     started = datetime.now(UTC)
     step = _STEP[job.grain]
+    policy = get_settings().forecast.covariates.horizon_policy
     segments = _segments(client, job)
     points: list[list] = []
+    used_covariates = False
 
     # --- по каждому сегменту: ряд -> прогноз -> строки будущих точек ---
     for dims in segments:
@@ -80,7 +88,26 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
             continue
         seg_key = _segment_key(dims)
         last_ts = ts[-1]
-        fc = forecaster.forecast(vals, job.horizon)
+        # --- ковариаты: ряд лидера из long-mart, выровненный на контекст+горизонт ---
+        # лидер берётся из long-mart (metric_name+segment_key), независимо от job.source
+        # (это широкая per-metric витрина цели). Тянем context_length+lag точек, чтобы
+        # сдвиг (t - lag) был покрыт; value-binding параметризован, mart — через identifier.
+        covs: dict[str, list[float]] = {}
+        for spec in resolve_covariate_specs(client, job, seg_key):
+            s_ts, s_vals = covariate_series(
+                client, spec.mart, spec.metric, spec.segment,
+                job.context_length + spec.lag,
+            )
+            arr = build_covariate_array(ts, s_ts, s_vals, spec.lag, job.horizon, step, policy)
+            if arr is not None:
+                covs[f"{spec.segment}:{spec.metric}@lag{spec.lag}"] = arr
+        # без ковариат -> вызов без covariates -> обычный прогноз (дефолт, без изменений);
+        # это сохраняет совместимость с форкастерами, чей forecast() не знает про ковариаты.
+        if covs:
+            used_covariates = True
+            fc = forecaster.forecast(vals, job.horizon, covariates=covs)
+        else:
+            fc = forecaster.forecast(vals, job.horizon)
         now = datetime.now(UTC)
         # будущая метка времени = последняя фактическая + шаг * номер горизонта
         for row in fc:
@@ -104,9 +131,11 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
         )
 
     # --- сводка прогона в forecast_run (всегда, даже без точек) ---
+    # отмечаем XReg-прогон в model_version, чтобы прогон с ковариатами был отличим
+    model_version = "v0+xreg" if used_covariates else "v0"
     client.insert(
         "forecast_run",
-        [[run_id, job.metric, "success", job.model, "v0",
+        [[run_id, job.metric, "success", job.model, model_version,
           started, datetime.now(UTC), len(segments), 0, None]],
         column_names=[
             "forecast_run_id", "forecast_job", "status", "model_name", "model_version",
