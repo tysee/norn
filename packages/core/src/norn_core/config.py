@@ -92,6 +92,11 @@ class CalibrationSettings(BaseModel):
     n_cutoffs: int = 3
 
 
+class CovariatesSettings(BaseModel):
+    horizon_policy: str = "strict"   # strict | ffill
+    xreg_mode: str = "xreg+timesfm"
+
+
 class ForecastSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_FORECAST_", env_nested_delimiter="__", extra="ignore")
     YAML_FILE: ClassVar[str] = "forecast.yml"
@@ -99,6 +104,7 @@ class ForecastSettings(_YamlSection):
     quantiles: list[float] = [0.1, 0.5, 0.9]
     timesfm: TimesFMSettings = TimesFMSettings()
     calibration: CalibrationSettings = CalibrationSettings()
+    covariates: CovariatesSettings = CovariatesSettings()
 
 
 class AgentSettings(_YamlSection):

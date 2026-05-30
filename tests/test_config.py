@@ -77,6 +77,23 @@ def test_yaml_file_not_a_setting_field(tmp_path, monkeypatch):
     assert DatabaseSettings().host == "chhost"
 
 
+def test_forecast_covariates_settings(tmp_path, monkeypatch):
+    (tmp_path / "forecast.yml").write_text(
+        "defaults: {horizon: 30, context_length: 512, seasonality: 7}\n"
+        "quantiles: [0.1, 0.5, 0.9]\n"
+        "timesfm: {worker_url: u, max_context: 1024, max_horizon: 1024}\n"
+        "calibration: {n_cutoffs: 3}\n"
+        "covariates: {horizon_policy: strict, xreg_mode: 'xreg+timesfm'}\n"
+    )
+    for n in ("database", "agent", "mcp"):
+        (tmp_path / f"{n}.yml").write_text("{}\n")
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    from norn_core.config import get_settings
+    s = get_settings(refresh=True)
+    assert s.forecast.covariates.horizon_policy == "strict"
+    assert s.forecast.covariates.xreg_mode == "xreg+timesfm"
+
+
 def test_get_settings_is_cached_within_a_run(tmp_path, monkeypatch):
     # Two get_settings() calls (no refresh) must return the SAME object,
     # proving the lru_cache holds on the hot forecast path.
