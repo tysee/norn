@@ -78,7 +78,7 @@ def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | Non
     from norn_core.config import get_settings
 
     # --- параметры прогона и выбор форкастера ---
-    n_cutoffs = get_settings(refresh=True).forecast.calibration.n_cutoffs
+    n_cutoffs = get_settings().forecast.calibration.n_cutoffs
     forecaster = forecaster or make_forecaster(job)
     run_id = str(uuid.uuid4())
 

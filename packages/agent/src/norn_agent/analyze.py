@@ -92,7 +92,7 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
     # --- compute: прогнать выбранные методы-улики (granger получает тюнинги из конфига) ---
     from norn_core.config import get_settings
 
-    a = get_settings(refresh=True).agent
+    a = get_settings().agent
     measurements = []
     for name in job.methods:
         if name == "granger":
@@ -131,7 +131,7 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
     decision = judge_dependencies(measurements, meta, prior_measurements=prior, agent=agent)
     from norn_core.config import get_settings
 
-    model_name = get_settings(refresh=True).agent.model
+    model_name = get_settings().agent.model
     # --- write-back: сохранить объяснения агента в dependency_explanation ---
     exp_rows = [
         [run_id, job.metric, r.source_segment, r.target_segment, r.lag, r.direction,

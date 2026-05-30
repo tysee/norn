@@ -27,7 +27,7 @@ class TimesFM25Model:
         from norn_core.config import get_settings
 
         # --- лимиты контекста/горизонта: аргумент перекрывает конфиг ---
-        tfm = get_settings(refresh=True).forecast.timesfm
+        tfm = get_settings().forecast.timesfm
         max_context = max_context if max_context is not None else tfm.max_context
         max_horizon = max_horizon if max_horizon is not None else tfm.max_horizon
 

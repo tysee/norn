@@ -82,9 +82,9 @@ def make_forecaster(job: ForecastJob, timesfm_url: str | None = None) -> Forecas
 
     if job.model == "timesfm-2.5":
         if timesfm_url is None:
-            timesfm_url = get_settings(refresh=True).forecast.timesfm.worker_url
-        q = tuple(get_settings(refresh=True).forecast.quantiles)
+            timesfm_url = get_settings().forecast.timesfm.worker_url
+        q = tuple(get_settings().forecast.quantiles)
         return TimesFMForecaster(timesfm_url, quantiles=q)
 
-    q = tuple(get_settings(refresh=True).forecast.quantiles)
+    q = tuple(get_settings().forecast.quantiles)
     return BaselineForecaster(job.seasonality if job.seasonality is not None else 7, q)

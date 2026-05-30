@@ -42,7 +42,7 @@ def build_agent(model: str | None = None) -> Agent:
     if model is None:
         from norn_core.config import get_settings
 
-        model = get_settings(refresh=True).agent.model
+        model = get_settings().agent.model
     return Agent(model, output_type=DependencyDecision, instructions=SYSTEM_PROMPT)
 
 

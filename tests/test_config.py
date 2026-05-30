@@ -57,3 +57,14 @@ def test_agent_granger_settings(tmp_path, monkeypatch):
     s = get_settings(refresh=True)
     assert s.agent.granger_significance == 0.05
     assert s.agent.granger_min_points_factor == 3
+
+
+def test_get_settings_is_cached_within_a_run(tmp_path, monkeypatch):
+    # Two get_settings() calls (no refresh) must return the SAME object,
+    # proving the lru_cache holds on the hot forecast path.
+    _write_config(tmp_path)
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.delenv("NORN_CLICKHOUSE_URL", raising=False)
+    first = get_settings()
+    second = get_settings()
+    assert first is second

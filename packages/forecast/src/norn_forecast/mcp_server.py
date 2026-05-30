@@ -34,7 +34,7 @@ def build_server(client=None) -> FastMCP:
     client = client if client is not None else get_client()
     from norn_core.config import get_settings
 
-    mcp_cfg = get_settings(refresh=True).mcp
+    mcp_cfg = get_settings().mcp
     mcp = FastMCP("norn", host=mcp_cfg.host, port=mcp_cfg.port)
 
     @mcp.tool()

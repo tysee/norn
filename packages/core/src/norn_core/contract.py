@@ -51,7 +51,7 @@ class ForecastJob(BaseModel):
         from norn_core.config import get_settings
 
         # --- источник дефолтов: секция forecast.defaults из config-слоя ---
-        d = get_settings(refresh=True).forecast.defaults
+        d = get_settings().forecast.defaults
         # --- merge: значение из задания приоритетнее дефолта (None => берём дефолт) ---
         return self.model_copy(update={
             "horizon": self.horizon if self.horizon is not None else d.horizon,

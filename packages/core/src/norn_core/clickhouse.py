@@ -42,7 +42,7 @@ def parse_dsn(dsn: str) -> dict:
 def _db_settings():
     from norn_core.config import get_settings
 
-    return get_settings(refresh=True).database
+    return get_settings().database
 
 
 def get_client(dsn: str | None = None) -> Client:
