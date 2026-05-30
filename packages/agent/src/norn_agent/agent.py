@@ -17,8 +17,11 @@ LLM-уровень слоя зависимостей: PydanticAI-агент пр
 from __future__ import annotations
 
 import json
+import logging
 
 from pydantic_ai import Agent
+
+logger = logging.getLogger(__name__)
 
 from norn_agent.contract import DependencyDecision, DependencyMeasurement
 
@@ -65,4 +68,14 @@ def judge_dependencies(
             [m.model_dump() for m in prior_measurements], indent=2
         )
     # --- синхронный вызов агента -> структурированное решение ---
-    return agent.run_sync(prompt).output
+    # Деградируем мягко: при сбое модели/транспорта возвращаем пустое решение,
+    # чтобы analyze_dependencies всё равно записал числовые улики (metric_dependency)
+    # и просто не создавал строк dependency_explanation.
+    try:
+        return agent.run_sync(prompt).output
+    except Exception:
+        logger.warning(
+            "judge_dependencies: LLM call failed; degrading to empty decision",
+            exc_info=False,
+        )
+        return DependencyDecision(relations=[])
