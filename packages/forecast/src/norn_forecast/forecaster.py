@@ -27,7 +27,12 @@ from norn_forecast.baseline import seasonal_naive_forecast
 
 
 class Forecaster(Protocol):
-    def forecast(self, values: list[float], horizon: int) -> list[dict]: ...
+    def forecast(
+        self,
+        values: list[float],
+        horizon: int,
+        covariates: dict[str, list[float]] | None = None,
+    ) -> list[dict]: ...
 
 
 class BaselineForecaster:
@@ -39,7 +44,13 @@ class BaselineForecaster:
         self.seasonality = seasonality
         self.quantiles = quantiles
 
-    def forecast(self, values: list[float], horizon: int) -> list[dict]:
+    def forecast(
+        self,
+        values: list[float],
+        horizon: int,
+        covariates: dict[str, list[float]] | None = None,
+    ) -> list[dict]:
+        # Baseline (seasonal-naive) has no notion of predictors: covariates are ignored.
         return seasonal_naive_forecast(values, horizon, self.seasonality, self.quantiles)
 
 
@@ -57,11 +68,21 @@ class TimesFMForecaster:
         self._client = client or httpx.Client(timeout=60.0)
         self._quantiles = list(quantiles)
 
-    def forecast(self, values: list[float], horizon: int) -> list[dict]:
-        resp = self._client.post(
-            f"{self._base}/forecast",
-            json={"values": values, "horizon": horizon, "quantiles": self._quantiles},
-        )
+    def forecast(
+        self,
+        values: list[float],
+        horizon: int,
+        covariates: dict[str, list[float]] | None = None,
+    ) -> list[dict]:
+        payload: dict = {
+            "values": values,
+            "horizon": horizon,
+            "quantiles": self._quantiles,
+        }
+        # Send covariates only when present so the plain-forecast path is byte-identical.
+        if covariates:
+            payload["dynamic_numerical_covariates"] = covariates
+        resp = self._client.post(f"{self._base}/forecast", json=payload)
         resp.raise_for_status()
         return resp.json()["rows"]
 
