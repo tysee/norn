@@ -8,7 +8,7 @@ forecast_point / forecast_segment; протокол MCP добавляется �
 Методы:
 - get_forecast(client, metric, segment, horizon=None) -> list[dict]
 - get_expected_range(client, metric, segment, horizon=None) -> list[dict]
-- check_ladder_rungs(client, metric, segment, rungs, horizon=None) -> list[dict]
+- classify_levels_vs_band(client, metric, segment, levels, horizon=None) -> list[dict]
 - get_divergence(client, metric, segment, current_value) -> dict
 - get_calibration(client, metric, segment) -> dict
 """
@@ -71,28 +71,28 @@ def get_expected_range(
     ]
 
 
-def check_ladder_rungs(
+def classify_levels_vs_band(
     client: Client,
     metric: str,
     segment: str,
-    rungs: list[float],
+    levels: list[float],
     horizon: int | None = None,
 ) -> list[dict]:
     pts = get_forecast(client, metric, segment, horizon)
     if not pts:
-        return [{"rung": r, "verdict": "no_forecast"} for r in rungs]
+        return [{"level": x, "verdict": "no_forecast"} for x in levels]
     band_low = min(p["p10"] for p in pts)
     band_high = max(p["p90"] for p in pts)
     out: list[dict] = []
-    for r in rungs:
-        if r < band_low:
+    for x in levels:
+        if x < band_low:
             verdict = "below_band"
-        elif r > band_high:
+        elif x > band_high:
             verdict = "above_band"
         else:
             verdict = "in_band"
         out.append(
-            {"rung": r, "verdict": verdict, "band_low": band_low, "band_high": band_high}
+            {"level": x, "verdict": verdict, "band_low": band_low, "band_high": band_high}
         )
     return out
 

@@ -19,7 +19,7 @@ from norn_forecast import mcp_tools
 TOOL_NAMES = [
     "get_forecast",
     "get_expected_range",
-    "check_ladder_rungs",
+    "classify_levels_vs_band",
     "get_divergence",
     "get_calibration",
     "get_dependencies",
@@ -42,11 +42,11 @@ def build_server(client=None) -> FastMCP:
         return mcp_tools.get_expected_range(client, metric, segment, horizon)
 
     @mcp.tool()
-    def check_ladder_rungs(
-        metric: str, segment: str, rungs: list[float], horizon: int | None = None
+    def classify_levels_vs_band(
+        metric: str, segment: str, levels: list[float], horizon: int | None = None
     ) -> list[dict]:
-        """Classify each proposed ladder rung price vs the forecast band."""
-        return mcp_tools.check_ladder_rungs(client, metric, segment, rungs, horizon)
+        """Classify each value vs the forecast band (below/in/above). Consumers (e.g. a trading bot) pass their own levels."""
+        return mcp_tools.classify_levels_vs_band(client, metric, segment, levels, horizon)
 
     @mcp.tool()
     def get_divergence(metric: str, segment: str, current_value: float) -> dict:
