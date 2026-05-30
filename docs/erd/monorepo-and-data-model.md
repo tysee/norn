@@ -91,9 +91,9 @@ get_divergence / get_calibration поверх таблиц `forecast_point` / `f
 `TestModel` (без реального LLM). Лаг — будущая ковариата TimesFM (XReg).
 
 **LLM-провайдер агента** конфигурируем (`config/agent.yml` → `provider`): ollama (локальный,
-дефолт `gemma3n:e2b`), openai-api, openai-oauth (bearer), openrouter, anthropic-api. Секреты —
+дефолт `gemma4:e2b`), openai-api, openai-oauth (bearer), openrouter, anthropic-api. Секреты —
 из env (OPENAI_API_KEY / NORN_OPENAI_OAUTH_TOKEN / OPENROUTER_API_KEY / ANTHROPIC_API_KEY).
-Для локального Ollama: запущенный демон на :11434 + `ollama pull gemma3n:e2b`. При недоступном/
+Для локального Ollama: запущенный демон на :11434 + `ollama pull gemma4:e2b`. При недоступном/
 неверном провайдере `norn deps` деградирует (пишет metric_dependency, без объяснения), не падает.
 
 ---

@@ -57,9 +57,9 @@ from norn_core.config import AgentSettings  # noqa: E402
 
 
 def test_build_model_ollama_no_key():
-    m = _build_model(AgentSettings(provider="ollama", model="gemma3n:e2b", base_url=None))
+    m = _build_model(AgentSettings(provider="ollama", model="gemma4:e2b", base_url=None))
     # OllamaModel wraps the model name; no API key required
-    assert "gemma3n:e2b" in repr(m) or getattr(m, "model_name", "") == "gemma3n:e2b"
+    assert "gemma4:e2b" in repr(m) or getattr(m, "model_name", "") == "gemma4:e2b"
 
 
 def test_build_model_openrouter_uses_env_key(monkeypatch):
