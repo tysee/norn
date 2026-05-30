@@ -5,17 +5,14 @@ packages/core/src/norn_core/clickhouse.py
 
 Методы:
 - parse_dsn(dsn) -> dict — разбор строки подключения (host/port/user/db/secure).
-- get_client(dsn=None) -> Client — клиент из DSN или env NORN_CLICKHOUSE_URL.
+- get_client(dsn=None) -> Client — клиент из DSN или из config-слоя (env NORN_CLICKHOUSE_URL переопределяет).
 """
 from __future__ import annotations
 
-import os
 from urllib.parse import urlparse
 
 import clickhouse_connect
 from clickhouse_connect.driver.client import Client
-
-DEFAULT_DSN = "http://norn:norn@localhost:8123/norn"
 
 
 def parse_dsn(dsn: str) -> dict:
@@ -35,6 +32,22 @@ def parse_dsn(dsn: str) -> dict:
     }
 
 
+def _db_settings():
+    from norn_core.config import get_settings
+
+    return get_settings(refresh=True).database
+
+
 def get_client(dsn: str | None = None) -> Client:
-    cfg = parse_dsn(dsn or os.environ.get("NORN_CLICKHOUSE_URL", DEFAULT_DSN))
+    if dsn is not None:
+        cfg = parse_dsn(dsn)
+    else:
+        db = _db_settings()
+        if db.dsn:
+            cfg = parse_dsn(db.dsn)
+        else:
+            cfg = {
+                "host": db.host, "port": db.port, "username": db.user,
+                "password": db.password, "database": db.database, "secure": db.secure,
+            }
     return clickhouse_connect.get_client(**cfg)
