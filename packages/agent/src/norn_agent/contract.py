@@ -1,12 +1,20 @@
 """
 packages/agent/src/norn_agent/contract.py
 
-Контракт слоя зависимостей: конфиг job, измерение-улика метода и решение агента.
+Типизированный контракт слоя зависимостей платформы norn — единый словарь данных
+между оркестратором, статистическими методами и LLM-агентом. Pydantic-модели здесь
+описывают вход (что анализировать), промежуточные улики методов и структурированный
+выход агента, гарантируя совместимость со схемой ClickHouse. Доменно-нейтрально:
+конкретная метрика и сегменты приходят извне.
 
-Классы:
-- DependencyJob — конфиг анализа (метрика, mart, два сегмента, max_lag); .from_yaml.
-- DependencyMeasurement — улика одного метода (lag/score/direction/p_value/confidence).
-- DependencyRelation / DependencyDecision — структурированный вывод LLM-агента.
+Публичные классы:
+- DependencyJob — конфиг анализа (метрика, mart, два сегмента, max_lag,
+  context_length, methods); .from_yaml загружает job из YAML, .resolved()
+  доливает незаданные тюнинги из настроек платформы.
+- DependencyMeasurement — одна улика метода: lag/score/direction/p_value/confidence.
+- DependencyRelation — решение агента по одной зависимости (is_real, объяснение,
+  оговорки, заметка о дрейфе относительно прошлого прогона).
+- DependencyDecision — обёртка-список DependencyRelation, output_type агента.
 """
 from __future__ import annotations
 

@@ -1,5 +1,10 @@
-model: "anthropic:claude-sonnet-4-5"
-max_lag: 10
-context_length: 512
-methods: [lagged_cross_correlation, granger]
-granger_min_points_factor: 3
+# config/agent.yml
+# Параметры подсистемы анализа зависимостей платформы norn: какая LLM формирует
+# объяснение, как глубоко искать lead/lag-связи и какими статистическими методами.
+# Ключи к LLM-провайдеру сюда не кладутся — они переопределяются через переменные окружения.
+
+model: "anthropic:claude-sonnet-4-5"   # идентификатор LLM (провайдер:модель), формирующей объяснение зависимостей
+max_lag: 10                            # максимальный сдвиг (lag), в шагах ряда, проверяемый при поиске связей
+context_length: 512                    # длина исторического окна (число точек), подаваемого в анализ
+methods: [lagged_cross_correlation, granger]  # статистические методы оценки зависимостей
+granger_min_points_factor: 3           # множитель: минимум точек для теста Грейнджера = factor * max_lag

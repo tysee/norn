@@ -1,12 +1,23 @@
 """
 packages/core/src/norn_core/config.py
 
-YAML-native типизированный config-слой платформы. По одному pydantic-settings классу
-на секцию (database/forecast/agent/mcp), каждый читается из config/<section>.yml с
-переопределением из env. Приоритет: env > YAML > дефолт поля.
+YAML-native типизированный config-слой платформы norn. Один pydantic-settings класс
+на секцию (database/forecast/agent/mcp); каждый читает свой config/<section>.yml и
+позволяет переопределять значения через переменные окружения. Это единый источник
+настроек для всех сервисов платформы: воркеры и агент не парсят файлы напрямую, а
+получают валидированные типизированные объекты с предсказуемым приоритетом источников.
 
-Методы:
-- get_settings() -> Settings — кэшированные настройки (читает NORN_CONFIG_DIR).
+Приоритет источников: init-аргументы (тесты) > env > YAML-файл > дефолт поля.
+
+Классы/методы:
+- _YamlSection — базовый класс секции; настраивает порядок источников (env > yaml > defaults).
+- DatabaseSettings — подключение к ClickHouse (host/port/user/password/database/secure + DSN-override).
+- ForecastDefaults / TimesFMSettings / CalibrationSettings — вложенные блоки настроек прогноза.
+- ForecastSettings — секция прогноза (дефолты, квантили, параметры TimesFM, калибровка).
+- AgentSettings — секция агента (модель, лаги, методы анализа зависимостей).
+- McpSettings — секция MCP-сервера (host/port).
+- Settings — агрегат всех секций.
+- get_settings(refresh=False) -> Settings — кэшированные настройки (читает NORN_CONFIG_DIR; refresh сбрасывает кэш).
 """
 from __future__ import annotations
 
@@ -43,10 +54,11 @@ class _YamlSection(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ):
+        # --- источник YAML: файл секции из каталога NORN_CONFIG_DIR ---
         yaml_src = YamlConfigSettingsSource(
             settings_cls, yaml_file=_config_dir() / cls.model_fields["YAML_FILE"].default
         )
-        # priority: init kwargs (tests) > env > yaml > defaults
+        # --- порядок = приоритет: init kwargs (tests) > env > yaml > defaults ---
         return (init_settings, env_settings, yaml_src)
 
 
@@ -114,6 +126,7 @@ class Settings(BaseModel):
 
 @functools.lru_cache(maxsize=1)
 def _cached() -> Settings:
+    # --- сборка агрегата: каждая секция читает свой YAML + env при инстанцировании ---
     return Settings(
         database=DatabaseSettings(),
         forecast=ForecastSettings(),

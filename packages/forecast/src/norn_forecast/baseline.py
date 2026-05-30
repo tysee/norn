@@ -1,12 +1,16 @@
 """
 packages/forecast/src/norn_forecast/baseline.py
 
-Baseline-форкастер: seasonal-naive с эмпирическими интервалами (80%).
-Заглушка до TimesFM; держит пайплайн рабочим.
+Baseline-форкастер платформы norn: seasonal-naive с эмпирическими 80%-интервалами.
+Повторяет значение из прошлого сезонного цикла как точечный прогноз, а ширину
+интервала оценивает по разбросу остатков «период-к-периоду». Лёгкая заглушка без
+torch — держит весь forecast-пайплайн (runner, калибровка, MCP) рабочим до
+подключения тяжёлой модели TimesFM и служит дешёвым эталоном при backtest.
 
 Методы:
 - seasonal_naive_forecast(values, horizon, seasonality) -> list[dict] —
-  точечный прогноз и границы p10/p50/p90 на горизонт.
+  точечный прогноз y_hat=p50 и границы p10/p90 на каждый шаг горизонта;
+  неопределённость растёт ~sqrt(числа сезонных циклов вперёд).
 """
 from __future__ import annotations
 
@@ -18,11 +22,13 @@ Z_80 = 1.2816  # z-score for an 80% interval (p10..p90)
 def seasonal_naive_forecast(
     values: list[float], horizon: int, seasonality: int = 7
 ) -> list[dict]:
+    # --- валидация входа ---
     arr = np.asarray(values, dtype=float)
     n = arr.size
     if n == 0:
         raise ValueError("values must be non-empty")
 
+    # --- оценка масштаба неопределённости (sigma) ---
     if n > seasonality:
         # Period-over-period residuals capture how much each seasonal cycle
         # deviates from the previous one.
@@ -46,6 +52,7 @@ def seasonal_naive_forecast(
     else:
         sigma = 0.0  # too short to estimate seasonal residuals
 
+    # --- сборка строк прогноза на горизонт ---
     out: list[dict] = []
     for h in range(1, horizon + 1):
         if n >= seasonality:
