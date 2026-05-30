@@ -40,13 +40,61 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_agent(model: str | None = None) -> Agent:
-    # --- выбор модели: явный аргумент либо значение из конфига платформы ---
-    if model is None:
-        from norn_core.config import get_settings
+def _build_model(a):
+    """Construct the pydantic-ai model for the configured provider (lazy SDK imports).
 
-        model = get_settings().agent.model
-    return Agent(model, output_type=DependencyDecision, instructions=SYSTEM_PROMPT)
+    Секреты — только из env (per-provider ключи), никаких хардкодов. Ничего не
+    вызывает по сети: только конструирует объект модели/провайдера.
+    """
+    import os
+
+    p = a.provider
+    if p == "ollama":
+        from pydantic_ai.models.ollama import OllamaModel
+        from pydantic_ai.providers.ollama import OllamaProvider
+
+        return OllamaModel(
+            a.model,
+            provider=OllamaProvider(base_url=a.base_url or "http://localhost:11434/v1"),
+        )
+    if p in ("openai-api", "openai-oauth"):
+        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.providers.openai import OpenAIProvider
+
+        key_env = "OPENAI_API_KEY" if p == "openai-api" else "NORN_OPENAI_OAUTH_TOKEN"
+        kwargs = {"api_key": os.environ[key_env]}
+        if a.base_url:
+            kwargs["base_url"] = a.base_url
+        return OpenAIChatModel(a.model, provider=OpenAIProvider(**kwargs))
+    if p == "openrouter":
+        from pydantic_ai.models.openrouter import OpenRouterModel
+        from pydantic_ai.providers.openrouter import OpenRouterProvider
+
+        return OpenRouterModel(
+            a.model, provider=OpenRouterProvider(api_key=os.environ["OPENROUTER_API_KEY"])
+        )
+    if p == "anthropic-api":
+        from pydantic_ai.models.anthropic import AnthropicModel
+        from pydantic_ai.providers.anthropic import AnthropicProvider
+
+        return AnthropicModel(
+            a.model, provider=AnthropicProvider(api_key=os.environ["ANTHROPIC_API_KEY"])
+        )
+    raise ValueError(f"unknown agent.provider: {p!r}")
+
+
+def build_agent(model=None) -> Agent:
+    # --- явный override (в т.ч. TestModel в тестах) — собираем агента как есть ---
+    if model is not None:
+        return Agent(model, output_type=DependencyDecision, instructions=SYSTEM_PROMPT)
+    # --- дефолт: строим модель-объект под провайдера из конфига платформы ---
+    from norn_core.config import get_settings
+
+    return Agent(
+        _build_model(get_settings().agent),
+        output_type=DependencyDecision,
+        instructions=SYSTEM_PROMPT,
+    )
 
 
 def judge_dependencies(
