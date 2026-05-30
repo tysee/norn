@@ -103,27 +103,29 @@ def judge_dependencies(
     prior_measurements: list[DependencyMeasurement] | None = None,
     agent: Agent | None = None,
 ) -> DependencyDecision:
-    agent = agent or build_agent()
-    # --- собрать промпт: шапка с сегментами/метрикой + текущие улики методов ---
-    prompt = (
-        f"Segments: source={meta['source_segment']} target={meta['target_segment']} "
-        f"metric={meta['metric_name']}.\nCurrent evidence:\n"
-        + json.dumps([m.model_dump() for m in measurements], indent=2)
-    )
-    # --- добавить улики прошлого прогона для оценки дрейфа зависимости ---
-    if prior_measurements:
-        prompt += "\nPrior evidence (previous run):\n" + json.dumps(
-            [m.model_dump() for m in prior_measurements], indent=2
-        )
-    # --- синхронный вызов агента -> структурированное решение ---
-    # Деградируем мягко: при сбое модели/транспорта возвращаем пустое решение,
-    # чтобы analyze_dependencies всё равно записал числовые улики (metric_dependency)
+    # --- сборка модели/агента и вызов — всё под try ---
+    # Деградируем мягко: при сбое сборки провайдера (нет креденшела/неверный
+    # конфиг) ИЛИ сбое модели/транспорта возвращаем пустое решение, чтобы
+    # analyze_dependencies всё равно записал числовые улики (metric_dependency)
     # и просто не создавал строк dependency_explanation.
     try:
+        agent = agent or build_agent()
+        # --- собрать промпт: шапка с сегментами/метрикой + текущие улики методов ---
+        prompt = (
+            f"Segments: source={meta['source_segment']} target={meta['target_segment']} "
+            f"metric={meta['metric_name']}.\nCurrent evidence:\n"
+            + json.dumps([m.model_dump() for m in measurements], indent=2)
+        )
+        # --- добавить улики прошлого прогона для оценки дрейфа зависимости ---
+        if prior_measurements:
+            prompt += "\nPrior evidence (previous run):\n" + json.dumps(
+                [m.model_dump() for m in prior_measurements], indent=2
+            )
+        # --- синхронный вызов агента -> структурированное решение ---
         return agent.run_sync(prompt).output
     except Exception:
         logger.warning(
-            "judge_dependencies: LLM call failed; degrading to empty decision",
+            "judge_dependencies: agent build/LLM call failed; degrading to empty decision",
             exc_info=False,
         )
         return DependencyDecision(relations=[])

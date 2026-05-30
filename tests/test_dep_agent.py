@@ -83,3 +83,19 @@ def test_build_model_openai_oauth_token(monkeypatch):
 def test_build_model_unknown_provider():
     with pytest.raises(ValueError):
         _build_model(AgentSettings(provider="bogus", model="x"))
+
+
+def test_judge_degrades_when_build_agent_fails(monkeypatch):
+    # provider needs a key that is absent -> build_agent() raises during construction
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("NORN_AGENT_PROVIDER", "anthropic-api")
+    monkeypatch.setenv("NORN_CONFIG_DIR", "config")
+    from norn_agent.agent import judge_dependencies
+    from norn_agent.contract import DependencyDecision, DependencyMeasurement
+
+    measurements = [DependencyMeasurement(method="granger", lag=1, score=2.0,
+                                          direction="source_leads", p_value=0.01, confidence=0.99)]
+    meta = {"source_segment": "symbol=BTCUSDT", "target_segment": "symbol=TONUSDT", "metric_name": "log_return"}
+    decision = judge_dependencies(measurements, meta)        # no agent injected -> build from (broken) config
+    assert isinstance(decision, DependencyDecision)
+    assert decision.relations == []                           # degraded, no crash
