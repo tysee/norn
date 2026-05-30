@@ -138,7 +138,7 @@ def get_calibration(client: Client, metric: str, segment: str) -> dict:
     }
 
 
-def get_dependencies(client, target_segment: str, metric: str = "log_return") -> list[dict]:
+def get_dependencies(client, target_segment: str, metric: str) -> list[dict]:
     run = client.query(
         "SELECT analysis_run_id FROM dependency_explanation "
         "WHERE target_segment=%(t)s AND metric_name=%(m)s "
@@ -180,7 +180,7 @@ def get_dependencies(client, target_segment: str, metric: str = "log_return") ->
 
 
 def get_dependency_history(
-    client, target_segment: str, source_segment: str, metric: str = "log_return", limit: int = 20
+    client, target_segment: str, source_segment: str, metric: str, limit: int = 20
 ) -> list[dict]:
     """Chronological log of a dependency: each past run's evidence + the agent's decision."""
     runs = client.query(

@@ -9,7 +9,8 @@ from norn_agent.contract import (
 
 
 def test_job_defaults_and_yaml(tmp_path: Path):
-    job = DependencyJob(source_segment="symbol=BTCUSDT", target_segment="symbol=TONUSDT")
+    # metric is required (platform is domain-agnostic — no default metric)
+    job = DependencyJob(source_segment="symbol=BTCUSDT", target_segment="symbol=TONUSDT", metric="log_return")
     assert job.metric == "log_return"
     assert job.mart == "mart_metric"
     assert job.max_lag == 10
@@ -20,6 +21,7 @@ def test_job_defaults_and_yaml(tmp_path: Path):
     p.write_text(
         "source_segment: symbol=BTCUSDT\n"
         "target_segment: symbol=TONUSDT\n"
+        "metric: log_return\n"
         "max_lag: 5\n"
     )
     loaded = DependencyJob.from_yaml(p)

@@ -66,6 +66,15 @@ The test: Every changed line should trace directly to the user's request.
 
 ## Architecture Principles
 
+- **norn — это вендор-нейтральная ПЛАТФОРМА, а не решение под конкретный кейс.**
+  В коде платформы (`packages/*`, `cli`) ЗАПРЕЩЁН доменный хардкод: ни крипты
+  (BTC/TON/Bybit/USDT), ни доменных метрик по умолчанию (`log_return`/`close`/`price`),
+  ни доменных терминов (`ladder`/`symbol`), ни доменных промптов. Платформа остаётся
+  generic: метрики, сегменты и разрезы — конфигурируемые параметры БЕЗ доменных
+  дефолтов; промпты агентов — доменно-агностичные. Вся доменная специфика (метрики,
+  символы, ingestion, дашборды, доменные job/промпты) живёт в **инстанс-репо**
+  (например `norn-crypto-instance`), подключаемом как submodule. Доменные примеры
+  допустимы ТОЛЬКО в тестах, доках и файлах `*example*`.
 - Feature-based architecture
 - SOLID principles
 - Clean code

@@ -1,7 +1,7 @@
-# Generic example dependency-job (crypto job lives in norn-crypto-instance).
-source_segment: symbol=A
-target_segment: symbol=B
-metric: log_return
+# Generic example dependency-job (domain-neutral; crypto job lives in norn-crypto-instance).
+source_segment: segment=A
+target_segment: segment=B
+metric: value
 mart: mart_metric
 max_lag: 10
 context_length: 512

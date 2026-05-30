@@ -59,13 +59,13 @@ def build_server(client=None) -> FastMCP:
         return mcp_tools.get_calibration(client, metric, segment)
 
     @mcp.tool()
-    def get_dependencies(target_segment: str, metric: str = "log_return") -> list[dict]:
+    def get_dependencies(target_segment: str, metric: str) -> list[dict]:
         """Lead/lag dependencies pointing at a target segment: numeric evidence + the agent's judgment."""
         return mcp_tools.get_dependencies(client, target_segment, metric)
 
     @mcp.tool()
     def get_dependency_history(
-        target_segment: str, source_segment: str, metric: str = "log_return", limit: int = 20
+        target_segment: str, source_segment: str, metric: str, limit: int = 20
     ) -> list[dict]:
         """Chronological log of one dependency (evidence + decision per run) to compare drift over time."""
         return mcp_tools.get_dependency_history(client, target_segment, source_segment, metric, limit)

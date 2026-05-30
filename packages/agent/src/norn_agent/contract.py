@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 class DependencyJob(BaseModel):
     source_segment: str
     target_segment: str
-    metric: str = "log_return"
+    metric: str  # domain metric_name (no default — platform is domain-agnostic)
     mart: str = "mart_metric"
     max_lag: int = 10
     context_length: int = 512

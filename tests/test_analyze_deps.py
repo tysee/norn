@@ -36,7 +36,7 @@ def test_analyze_writes_evidence_and_explanation(ch):
     ch.command("DROP TABLE IF EXISTS mart_metric")
     _seed_mart(ch)
     job = DependencyJob(source_segment="symbol=BTCUSDT", target_segment="symbol=TONUSDT",
-                        max_lag=10)
+                        metric="log_return", max_lag=10)
     test_agent = Agent(TestModel(), output_type=DependencyDecision, system_prompt=SYSTEM_PROMPT)
     run_id = analyze_dependencies(job, client=ch, agent=test_agent)
 
@@ -64,7 +64,7 @@ def test_history_accumulates_and_prior_is_found(ch):
     ch.command("TRUNCATE TABLE IF EXISTS dependency_explanation")
     ch.command("DROP TABLE IF EXISTS mart_metric")
     _seed_mart(ch)
-    job = DependencyJob(source_segment="symbol=BTCUSDT", target_segment="symbol=TONUSDT", max_lag=10)
+    job = DependencyJob(source_segment="symbol=BTCUSDT", target_segment="symbol=TONUSDT", metric="log_return", max_lag=10)
     test_agent = Agent(TestModel(), output_type=DependencyDecision, system_prompt=SYSTEM_PROMPT)
 
     run1 = analyze_dependencies(job, client=ch, agent=test_agent)
