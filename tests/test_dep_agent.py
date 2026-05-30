@@ -99,3 +99,24 @@ def test_judge_degrades_when_build_agent_fails(monkeypatch):
     decision = judge_dependencies(measurements, meta)        # no agent injected -> build from (broken) config
     assert isinstance(decision, DependencyDecision)
     assert decision.relations == []                           # degraded, no crash
+
+
+def test_output_type_native_for_ollama():
+    # Local models (Ollama) lack reliable tool-calling -> constrain via native JSON-schema mode.
+    from pydantic_ai import NativeOutput
+
+    from norn_agent.agent import _output_type
+    from norn_core.config import AgentSettings
+
+    ot = _output_type(AgentSettings(provider="ollama", model="gemma4:e2b"))
+    assert isinstance(ot, NativeOutput)
+
+
+def test_output_type_default_for_cloud():
+    # Cloud providers use the default tool-calling output mode (the bare model class).
+    from norn_agent.agent import _output_type
+    from norn_agent.contract import DependencyDecision
+    from norn_core.config import AgentSettings
+
+    assert _output_type(AgentSettings(provider="anthropic-api", model="claude-sonnet-4-5")) is DependencyDecision
+    assert _output_type(AgentSettings(provider="openai-api", model="gpt-4o-mini")) is DependencyDecision

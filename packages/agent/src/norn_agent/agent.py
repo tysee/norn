@@ -83,16 +83,33 @@ def _build_model(a):
     raise ValueError(f"unknown agent.provider: {p!r}")
 
 
+def _output_type(a):
+    """Выбрать режим структурированного вывода под провайдера.
+
+    Локальные модели (Ollama) ненадёжно вызывают инструменты (tool-calling), а
+    pydantic-ai по умолчанию добывает структурированный вывод именно через вызов
+    инструмента — на gemma это приводит к UnexpectedModelBehavior. Для ollama
+    принуждаем модель к схеме нативным JSON-schema-режимом провайдера (NativeOutput).
+    Облачные провайдеры остаются на дефолтном tool-calling (они под него заточены).
+    """
+    if a.provider == "ollama":
+        from pydantic_ai import NativeOutput
+
+        return NativeOutput(DependencyDecision)
+    return DependencyDecision
+
+
 def build_agent(model=None) -> Agent:
     # --- явный override (в т.ч. TestModel в тестах) — собираем агента как есть ---
     if model is not None:
         return Agent(model, output_type=DependencyDecision, instructions=SYSTEM_PROMPT)
-    # --- дефолт: строим модель-объект под провайдера из конфига платформы ---
+    # --- дефолт: строим модель-объект и режим вывода под провайдера из конфига ---
     from norn_core.config import get_settings
 
+    a = get_settings().agent
     return Agent(
-        _build_model(get_settings().agent),
-        output_type=DependencyDecision,
+        _build_model(a),
+        output_type=_output_type(a),
         instructions=SYSTEM_PROMPT,
     )
 
