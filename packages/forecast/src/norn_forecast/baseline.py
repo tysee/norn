@@ -51,8 +51,8 @@ def seasonal_naive_forecast(
         if sigma == 0.0:
             cycle = arr[-seasonality:]
             x = np.arange(cycle.size, dtype=float)
-            coef = np.polyfit(x, cycle, 1)
-            profile_resid = cycle - np.polyval(coef, x)
+            fitted = np.polynomial.Polynomial.fit(x, cycle, deg=1)
+            profile_resid = cycle - fitted(x)
             sigma = float(np.std(profile_resid))
             # Snap floating-point noise from the linear fit to exactly zero so a
             # perfectly linear seasonal ramp yields a zero-width interval.

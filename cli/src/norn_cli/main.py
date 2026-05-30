@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -47,7 +48,9 @@ def schema_apply() -> None:
 
 
 @app.command()
-def forecast(job_path: str = typer.Argument(..., help="path to a forecast-job YAML")) -> None:
+def forecast(
+    job_path: Annotated[str, typer.Argument(help="path to a forecast-job YAML")],
+) -> None:
     """Run a forecast job: extract -> forecast -> write contract rows."""
     # --- читаем декларативный job из YAML ---
     job = ForecastJob.from_yaml(job_path)
@@ -60,7 +63,9 @@ def forecast(job_path: str = typer.Argument(..., help="path to a forecast-job YA
 
 
 @app.command()
-def calibrate(job_path: str = typer.Argument(..., help="path to a forecast-job YAML")) -> None:
+def calibrate(
+    job_path: Annotated[str, typer.Argument(help="path to a forecast-job YAML")],
+) -> None:
     """Rolling-origin calibration: writes coverage/wape/mape/bias to forecast_segment."""
     # --- читаем тот же job-контракт, что и для прогноза ---
     job = ForecastJob.from_yaml(job_path)
@@ -73,7 +78,9 @@ def calibrate(job_path: str = typer.Argument(..., help="path to a forecast-job Y
 
 
 @app.command()
-def deps(job_path: str = typer.Argument(..., help="path to a dependency-job YAML")) -> None:
+def deps(
+    job_path: Annotated[str, typer.Argument(help="path to a dependency-job YAML")],
+) -> None:
     """Analyze lead/lag dependencies and write evidence + the agent's explanation."""
     # --- читаем декларативный dependency-job из YAML ---
     job = DependencyJob.from_yaml(job_path)
