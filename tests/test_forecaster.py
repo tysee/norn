@@ -79,3 +79,25 @@ def test_timesfm_forecaster_quantiles_from_settings(monkeypatch):
     f._client = client  # inject mock transport
     f.forecast([1.0, 2.0, 3.0], horizon=1)
     assert seen["quantiles"] == [0.1, 0.5, 0.9]  # from config, not a hardcoded literal
+
+
+def test_baseline_ignores_covariates():
+    from norn_forecast.forecaster import BaselineForecaster
+    vals = [float(v) for v in [10, 12, 9, 11, 13, 8, 10] * 4]
+    f = BaselineForecaster(seasonality=7)
+    assert f.forecast(vals, 5, covariates={"x": [0.0] * 100}) == f.forecast(vals, 5)
+
+
+def test_timesfm_sends_covariates_only_when_present():
+    import json, httpx
+    from norn_forecast.forecaster import TimesFMForecaster
+    seen = {}
+    def handler(req):
+        seen.clear(); seen.update(json.loads(req.content))
+        return httpx.Response(200, json={"rows": []})
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    f = TimesFMForecaster("http://w", client=client)
+    f.forecast([1.0, 2.0, 3.0], 1)                       # plain
+    assert seen.get("dynamic_numerical_covariates", {}) == {}
+    f.forecast([1.0, 2.0, 3.0], 1, covariates={"btc": [1.0, 2.0, 3.0, 4.0]})
+    assert seen["dynamic_numerical_covariates"] == {"btc": [1.0, 2.0, 3.0, 4.0]}

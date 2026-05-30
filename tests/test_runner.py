@@ -160,3 +160,17 @@ def test_run_job_resolves_defaults_from_config(ch, monkeypatch):
     n = ch.query("SELECT count() FROM forecast_point WHERE forecast_run_id=%(r)s",
                  parameters={"r": run_id}).result_rows[0][0]
     assert n == 30  # default horizon from config
+
+
+def test_run_job_without_covariates_unchanged(ch):
+    from datetime import datetime, timedelta
+    ch.command("CREATE TABLE test_mart (ts DateTime, region String, value Float64) "
+               "ENGINE = MergeTree ORDER BY (region, ts)")
+    start = datetime(2026, 1, 1)
+    ch.insert("test_mart", [[start + timedelta(days=d), "eu", float(d % 7)] for d in range(40)],
+              column_names=["ts", "region", "value"])
+    job = ForecastJob(metric="value", source="test_mart", dimensions=["region"], horizon=5)  # no covariates
+    run_id = run_job(job, client=ch)
+    n = ch.query("SELECT count() FROM forecast_point WHERE forecast_run_id=%(r)s",
+                 parameters={"r": run_id}).result_rows[0][0]
+    assert n == 5  # plain baseline path, unchanged

@@ -10,8 +10,11 @@ packages/forecast/src/norn_forecast/timesfm_model.py
 Классы/методы:
 - TimesFM25Model.__init__(max_context, max_horizon, torch_compile) — загрузка и
   компиляция TimesFM 2.5; лимиты по умолчанию берутся из конфига forecast.timesfm.
-- TimesFM25Model.predict(values, horizon, quantiles) -> list[dict] — прогноз и
-  раскладка квантильных столбцов модели в p10/p50/p90 на каждый шаг горизонта.
+- TimesFM25Model.predict(values, horizon, quantiles,
+  dynamic_numerical_covariates=None) -> list[dict] — прогноз и раскладка
+  квантильных столбцов модели в p10/p50/p90 на каждый шаг горизонта. С
+  ковариатами вызывает forecast_with_covariates (xreg_mode из конфига), без —
+  обычный forecast (дефолтный путь не меняется).
 - build_app() -> FastAPI — точка входа контейнера: create_app + реальная модель.
 """
 from __future__ import annotations
@@ -51,14 +54,35 @@ class TimesFM25Model:
         )
 
     def predict(
-        self, values: list[float], horizon: int, quantiles: list[float]
+        self,
+        values: list[float],
+        horizon: int,
+        quantiles: list[float],
+        dynamic_numerical_covariates: dict[str, list[float]] | None = None,
     ) -> list[dict]:
         import numpy as np
 
         # --- инференс модели ---
-        point_forecast, quantile_forecast = self._model.forecast(
-            horizon=horizon, inputs=[np.asarray(values, dtype=float)]
-        )
+        if dynamic_numerical_covariates:
+            # XReg-путь: лидеры передаются как динамические числовые ковариаты.
+            # Version-sensitive: arg names/shape сверены с установленной TimesFM 2.5 (git);
+            # при расхождении адаптируй здесь — стабильный контракт воркера в FakeModel.
+            from norn_core.config import get_settings
+
+            mode = get_settings().forecast.covariates.xreg_mode
+            point_forecast, quantile_forecast = self._model.forecast_with_covariates(
+                horizon=horizon,
+                inputs=[np.asarray(values, dtype=float)],
+                dynamic_numerical_covariates={
+                    k: [np.asarray(v, dtype=float)]
+                    for k, v in dynamic_numerical_covariates.items()
+                },
+                xreg_mode=mode,
+            )
+        else:
+            point_forecast, quantile_forecast = self._model.forecast(
+                horizon=horizon, inputs=[np.asarray(values, dtype=float)]
+            )
         # point_forecast: (1, horizon); quantile_forecast: (1, horizon, 10).
         # Quantile columns are [mean, q10, q20, ..., q90] -> column = round(q*10).
         point = point_forecast[0]

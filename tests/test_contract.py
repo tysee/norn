@@ -42,6 +42,19 @@ def test_forecast_job_from_yaml(tmp_path: Path):
     assert job.horizon == 7
 
 
+def test_forecast_job_covariates_default_empty():
+    job = ForecastJob(metric="close", source="t")
+    assert job.covariates == [] and job.use_dependencies is False  # plain forecast is the default
+
+
+def test_forecast_job_covariate_spec():
+    from norn_core.contract import CovariateSpec
+    job = ForecastJob(metric="close", source="t",
+                      covariates=[{"metric": "log_return", "segment": "symbol=BTCUSDT", "lag": 3}])
+    assert isinstance(job.covariates[0], CovariateSpec)
+    assert job.covariates[0].lag == 3 and job.covariates[0].segment == "symbol=BTCUSDT"
+
+
 def test_forecast_point_roundtrip():
     pt = ForecastPoint(
         forecast_run_id="run-1",

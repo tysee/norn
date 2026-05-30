@@ -122,6 +122,12 @@ get_divergence / get_calibration поверх таблиц `forecast_point` / `f
 (нормальная аппроксимация), значимость/порог Granger — из `agent.*`, колонки квантилей
 TimesFM выводятся из запрошенных квантилей. Числовые допуски (eps) — именованные константы.
 
+**Ковариаты (XReg):** forecast-job может объявить covariates (metric/segment/lag) или
+use_dependencies (взять подтверждённые зависимости из metric_dependency). Раннер строит
+выровненный по таймстемпам ряд лидера на контекст+горизонт (policy strict|ffill из config) и
+передаёт TimesFM как dynamic_numerical_covariates (forecast_with_covariates). Без ковариат —
+обычный прогноз (дефолт, без изменений). Baseline ковариаты игнорирует.
+
 ---
 
 ## 7. Связь с диаграммами

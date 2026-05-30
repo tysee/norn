@@ -9,6 +9,7 @@ packages/core/src/norn_core/contract.py
 
 Классы/методы:
 - Grain — зерно временного ряда (hourly | daily), задаёт частоту точек.
+- CovariateSpec — спецификация ряда-лидера (metric/segment/lag/mart) для XReg-ковариат.
 - ForecastJob — описание прогноз-задания (метрика, источник, разрезы, гиперпараметры, расписание).
   * ForecastJob.from_yaml(path) — загрузка и валидация задания из YAML-файла.
   * ForecastJob.resolved() — копия задания с дозаполненными из config-слоя tunables (явные значения важнее).
@@ -30,11 +31,20 @@ class Grain(str, Enum):
     daily = "daily"
 
 
+class CovariateSpec(BaseModel):
+    metric: str
+    segment: str
+    lag: int
+    mart: str = "mart_metric"   # long store to read the leader from (ts, metric_name, value, segment_key)
+
+
 class ForecastJob(BaseModel):
     metric: str
     source: str  # ClickHouse table, e.g. "analytics.mart_metric"
     grain: Grain = Grain.daily
     dimensions: list[str] = Field(default_factory=list)
+    covariates: list[CovariateSpec] = Field(default_factory=list)
+    use_dependencies: bool = False
     horizon: int | None = None
     context_length: int | None = None
     seasonality: int | None = None
