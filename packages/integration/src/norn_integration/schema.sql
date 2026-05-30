@@ -38,3 +38,35 @@ CREATE TABLE IF NOT EXISTS forecast_segment (
     bias            Float64,
     created_at      DateTime DEFAULT now()
 ) ENGINE = MergeTree ORDER BY (metric_name, segment_key, forecast_run_id);
+
+CREATE TABLE IF NOT EXISTS metric_dependency (
+    analysis_run_id String,
+    metric_name     String,
+    source_segment  String,
+    target_segment  String,
+    method          String,
+    lag             Int16,
+    score           Float64,
+    direction       String,
+    p_value         Nullable(Float64),
+    confidence      Float64,
+    window_start    DateTime,
+    window_end      DateTime,
+    created_at      DateTime DEFAULT now()
+) ENGINE = MergeTree ORDER BY (metric_name, target_segment, source_segment, created_at);
+
+CREATE TABLE IF NOT EXISTS dependency_explanation (
+    analysis_run_id String,
+    metric_name     String,
+    source_segment  String,
+    target_segment  String,
+    lag             Int16,
+    direction       String,
+    is_real         UInt8,
+    confidence      Float64,
+    explanation     String,
+    caveats         String,
+    change_note     String,
+    llm_model       String,
+    created_at      DateTime DEFAULT now()
+) ENGINE = MergeTree ORDER BY (metric_name, target_segment, source_segment, created_at);
