@@ -15,36 +15,51 @@ from __future__ import annotations
 
 
 class TimesFM25Model:
-    def __init__(self) -> None:
-        # Lazy imports: torch/timesfm only inside the container.
+    def __init__(
+        self,
+        max_context: int = 1024,
+        max_horizon: int = 1024,
+        torch_compile: bool = False,
+    ) -> None:
+        # Lazy imports: torch/timesfm only inside the worker env (never the fast suite).
         import timesfm
 
-        self._tfm = timesfm.TimesFm(
-            hparams=timesfm.TimesFmHparams(backend="cpu", horizon_len=512),
-            checkpoint=timesfm.TimesFmCheckpoint(
-                huggingface_repo_id="google/timesfm-2.5-200m-pytorch"
-            ),
+        self._model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
+            "google/timesfm-2.5-200m-pytorch", torch_compile=torch_compile
+        )
+        self._model.compile(
+            timesfm.ForecastConfig(
+                max_context=max_context,
+                max_horizon=max_horizon,
+                normalize_inputs=True,
+                use_continuous_quantile_head=True,
+                force_flip_invariance=True,
+                infer_is_positive=True,
+                fix_quantile_crossing=True,
+            )
         )
 
     def predict(
         self, values: list[float], horizon: int, quantiles: list[float]
     ) -> list[dict]:
-        point, quantile = self._tfm.forecast(
-            inputs=[values], freq=[0], horizon_len=horizon
+        import numpy as np
+
+        point_forecast, quantile_forecast = self._model.forecast(
+            horizon=horizon, inputs=[np.asarray(values, dtype=float)]
         )
-        # quantile shape: [1, horizon, n_quantiles]; TimesFM default quantile order
-        # is [0.1..0.9]; map requested 0.1/0.5/0.9 to columns.
-        q = quantile[0]
-        idx = {0.1: 1, 0.5: 5, 0.9: 9}
+        # point_forecast: (1, horizon); quantile_forecast: (1, horizon, 10).
+        # Quantile columns are [mean, q10, q20, ..., q90] -> p10=idx1, p50=idx5, p90=idx9.
+        point = point_forecast[0]
+        quant = quantile_forecast[0]
         rows: list[dict] = []
         for h in range(horizon):
             rows.append(
                 {
                     "horizon_step": h + 1,
-                    "y_hat": float(point[0][h]),
-                    "p10": float(q[h][idx[0.1]]),
-                    "p50": float(q[h][idx[0.5]]),
-                    "p90": float(q[h][idx[0.9]]),
+                    "y_hat": float(point[h]),
+                    "p10": float(quant[h][1]),
+                    "p50": float(quant[h][5]),
+                    "p90": float(quant[h][9]),
                 }
             )
         return rows

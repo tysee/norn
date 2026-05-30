@@ -39,8 +39,10 @@ def _segment_key(dims: dict) -> str:
 def _series(client: Client, job: ForecastJob, dims: dict) -> tuple[list[datetime], list[float]]:
     where = " AND ".join(f"{k} = %({k})s" for k in dims) or "1 = 1"
     rows = client.query(
-        f"SELECT ts, {job.metric} FROM {job.source} WHERE {where} "
-        f"ORDER BY ts LIMIT {job.context_length}",
+        f"SELECT ts, val FROM ("
+        f"SELECT ts, {job.metric} AS val FROM {job.source} WHERE {where} "
+        f"ORDER BY ts DESC LIMIT {job.context_length}"
+        f") ORDER BY ts",
         parameters=dims,
     ).result_rows
     ts = [r[0] for r in rows]

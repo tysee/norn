@@ -1,5 +1,7 @@
 fastapi>=0.110
 uvicorn>=0.29
+numpy>=1.26
 torch>=2.2
-timesfm>=2.5
+# TimesFM 2.5 is not published to PyPI yet — install from the upstream repo.
+timesfm @ git+https://github.com/google-research/timesfm.git
 pydantic>=2.6
