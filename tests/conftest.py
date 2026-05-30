@@ -1,5 +1,7 @@
 import os
 
+os.environ.setdefault("NORN_DB_PASSWORD", "norn")  # secret comes from env now (no Python default)
+
 import pytest
 
 from norn_core.clickhouse import get_client
