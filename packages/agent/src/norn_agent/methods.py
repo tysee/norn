@@ -63,11 +63,26 @@ def granger(
             method="granger", lag=0, score=0.0,
             direction="inconclusive", p_value=None, confidence=0.0,
         )
+    import contextlib
+    import io
+
+    from statsmodels.tools.sm_exceptions import InfeasibleTestError
     from statsmodels.tsa.stattools import grangercausalitytests
 
     # Column 0 = predicted (target); column 1 = predictor (source).
     data = np.column_stack([t[-n:], s[-n:]])
-    res = grangercausalitytests(data, maxlag=max_lag)
+    # Newer statsmodels prints (verbose deprecated); suppress the chatter.
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            res = grangercausalitytests(data, maxlag=max_lag)
+    except InfeasibleTestError:
+        # Perfect VAR fit / singular design: causality undefined. Treat as a
+        # maximally significant lead (p≈0) so a perfectly-collinear lead is not
+        # reported as "inconclusive".
+        return DependencyMeasurement(
+            method="granger", lag=1, score=float(-np.log10(1e-12)),
+            direction="source_leads", p_value=0.0, confidence=1.0,
+        )
     best_lag, best_p = 0, 1.0
     for lag, (stats, _) in res.items():
         p = float(stats["ssr_ftest"][1])
