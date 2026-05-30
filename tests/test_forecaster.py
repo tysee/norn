@@ -45,3 +45,16 @@ def test_timesfm_forecaster_posts_and_parses():
     rows = f.forecast([1.0, 2.0, 3.0], horizon=3)
     assert len(rows) == 3
     assert rows[0]["p50"] == 2.0 and rows[0]["p90"] >= rows[0]["p10"]
+
+
+def test_timesfm_forecaster_url_from_settings(monkeypatch):
+    import norn_forecast.forecaster as fc
+    from norn_core.contract import ForecastJob
+
+    monkeypatch.delenv("NORN_TIMESFM_URL", raising=False)
+    monkeypatch.setenv("NORN_CONFIG_DIR", "config")
+    monkeypatch.setenv("NORN_FORECAST_TIMESFM__WORKER_URL", "http://worker-from-settings:9100")
+    job = ForecastJob(metric="close", source="t", model="timesfm-2.5")
+    f = fc.make_forecaster(job)
+    assert isinstance(f, fc.TimesFMForecaster)
+    assert f._base == "http://worker-from-settings:9100"
