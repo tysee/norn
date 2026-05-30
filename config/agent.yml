@@ -1,0 +1,5 @@
+model: "anthropic:claude-sonnet-4-5"
+max_lag: 10
+context_length: 512
+methods: [lagged_cross_correlation, granger]
+granger_min_points_factor: 3

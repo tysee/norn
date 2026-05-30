@@ -9,7 +9,6 @@ packages/agent/src/norn_agent/analyze.py
 """
 from __future__ import annotations
 
-import os
 import uuid
 from datetime import UTC, datetime
 
@@ -66,6 +65,7 @@ def _align(src_ts, src_vals, tgt_ts, tgt_vals):
 
 
 def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
+    job = job.resolved()
     run_id = str(uuid.uuid4())
     s_ts, s_v = _series(client, job.mart, job.metric, job.source_segment, job.context_length)
     t_ts, t_v = _series(client, job.mart, job.metric, job.target_segment, job.context_length)
@@ -96,7 +96,9 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
         "metric_name": job.metric,
     }
     decision = judge_dependencies(measurements, meta, prior_measurements=prior, agent=agent)
-    model_name = os.environ.get("NORN_AGENT_MODEL", "anthropic:claude-sonnet-4-5")
+    from norn_core.config import get_settings
+
+    model_name = get_settings(refresh=True).agent.model
     exp_rows = [
         [run_id, job.metric, r.source_segment, r.target_segment, r.lag, r.direction,
          1 if r.is_real else 0, r.confidence, r.explanation, r.caveats, r.change_note,

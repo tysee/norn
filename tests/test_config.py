@@ -1,0 +1,45 @@
+import textwrap
+
+from norn_core.config import get_settings
+
+
+def _write_config(d):
+    (d / "database.yml").write_text("host: chhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\n")
+    (d / "forecast.yml").write_text(textwrap.dedent("""\
+        defaults: {horizon: 30, context_length: 512, seasonality: 7}
+        quantiles: [0.1, 0.5, 0.9]
+        timesfm: {worker_url: "http://localhost:9100", max_context: 1024, max_horizon: 1024}
+        calibration: {n_cutoffs: 3}
+    """))
+    (d / "agent.yml").write_text("model: m1\nmax_lag: 10\ncontext_length: 512\nmethods: [a, b]\ngranger_min_points_factor: 3\n")
+    (d / "mcp.yml").write_text("host: 127.0.0.1\nport: 9200\n")
+
+
+def test_settings_load_from_yaml(tmp_path, monkeypatch):
+    _write_config(tmp_path)
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.delenv("NORN_CLICKHOUSE_URL", raising=False)
+    s = get_settings(refresh=True)
+    assert s.database.host == "chhost"
+    assert s.forecast.defaults.horizon == 30
+    assert s.forecast.timesfm.worker_url == "http://localhost:9100"
+    assert s.agent.model == "m1"
+    assert s.mcp.port == 9200
+
+
+def test_env_overrides_yaml(tmp_path, monkeypatch):
+    _write_config(tmp_path)
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("NORN_MCP_PORT", "9999")
+    monkeypatch.setenv("NORN_AGENT_MODEL", "override-model")
+    s = get_settings(refresh=True)
+    assert s.mcp.port == 9999          # env wins over yaml
+    assert s.agent.model == "override-model"
+
+
+def test_clickhouse_url_alias_overrides_db(tmp_path, monkeypatch):
+    _write_config(tmp_path)
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("NORN_CLICKHOUSE_URL", "http://u:p@h:8123/db")
+    s = get_settings(refresh=True)
+    assert s.database.dsn == "http://u:p@h:8123/db"

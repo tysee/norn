@@ -51,6 +51,7 @@ def _series(client: Client, job: ForecastJob, dims: dict) -> tuple[list[datetime
 
 
 def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = None) -> str:
+    job = job.resolved()
     run_id = str(uuid.uuid4())
     forecaster = forecaster or make_forecaster(job)
     started = datetime.now(UTC)

@@ -12,7 +12,6 @@ packages/forecast/src/norn_forecast/forecaster.py
 """
 from __future__ import annotations
 
-import os
 from typing import Protocol
 
 import httpx
@@ -55,6 +54,9 @@ class TimesFMForecaster:
 
 def make_forecaster(job: ForecastJob, timesfm_url: str | None = None) -> Forecaster:
     if job.model == "timesfm-2.5":
-        url = timesfm_url or os.environ.get("NORN_TIMESFM_URL", "http://localhost:9100")
-        return TimesFMForecaster(url)
-    return BaselineForecaster(job.seasonality)
+        if timesfm_url is None:
+            from norn_core.config import get_settings
+
+            timesfm_url = get_settings(refresh=True).forecast.timesfm.worker_url
+        return TimesFMForecaster(timesfm_url)
+    return BaselineForecaster(job.seasonality if job.seasonality is not None else 7)

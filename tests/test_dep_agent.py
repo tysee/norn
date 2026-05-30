@@ -18,3 +18,14 @@ def test_judge_returns_structured_decision_with_testmodel():
     decision = judge_dependencies(measurements, meta, agent=test_agent)
     assert isinstance(decision, DependencyDecision)
     assert len(decision.relations) >= 1
+
+
+def test_build_agent_model_from_settings(monkeypatch):
+    import norn_agent.agent as am
+
+    monkeypatch.setenv("NORN_CONFIG_DIR", "config")
+    monkeypatch.setenv("NORN_AGENT_MODEL", "test-model-x")
+    captured = {}
+    monkeypatch.setattr(am, "Agent", lambda model, **kw: captured.update({"model": model}) or "AGENT")
+    am.build_agent()
+    assert captured["model"] == "test-model-x"

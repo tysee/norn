@@ -68,6 +68,10 @@ def backtest_metrics(
 
 
 def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = None) -> str:
+    job = job.resolved()
+    from norn_core.config import get_settings
+
+    n_cutoffs = get_settings(refresh=True).forecast.calibration.n_cutoffs
     forecaster = forecaster or make_forecaster(job)
     run_id = str(uuid.uuid4())
     rows: list[list] = []
@@ -75,7 +79,7 @@ def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | Non
         _ts, vals = _series(client, job, dims)
         if not vals:
             continue
-        m = backtest_metrics(vals, forecaster, job.horizon)
+        m = backtest_metrics(vals, forecaster, job.horizon, n_cutoffs=n_cutoffs)
         rows.append([
             run_id, job.metric, _segment_key(dims),
             m["n_points"], 1 if m["n_points"] == 0 else 0,

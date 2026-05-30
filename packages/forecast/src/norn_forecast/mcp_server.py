@@ -29,7 +29,10 @@ TOOL_NAMES = [
 
 def build_server(client=None) -> FastMCP:
     client = client if client is not None else get_client()
-    mcp = FastMCP("norn", host="127.0.0.1", port=9200)
+    from norn_core.config import get_settings
+
+    mcp_cfg = get_settings(refresh=True).mcp
+    mcp = FastMCP("norn", host=mcp_cfg.host, port=mcp_cfg.port)
 
     @mcp.tool()
     def get_forecast(metric: str, segment: str, horizon: int | None = None) -> list[dict]:

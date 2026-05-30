@@ -2,7 +2,7 @@
 name = "norn-core"
 version = "0.0.0"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2.6", "pyyaml>=6.0", "clickhouse-connect>=0.7"]
+dependencies = ["pydantic>=2.6", "pydantic-settings>=2.2", "pyyaml>=6.0", "clickhouse-connect>=0.7"]
 
 [build-system]
 requires = ["hatchling"]

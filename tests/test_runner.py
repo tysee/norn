@@ -133,3 +133,20 @@ def test_run_job_uses_recent_context(ch):
     # context_length 5 < seasonality 7, so the baseline carries the last value
     # (~104) from the recent window, NOT the stale 1.0 from the oldest rows.
     assert max_y_hat >= 50.0
+
+
+def test_run_job_resolves_defaults_from_config(ch, monkeypatch):
+    from datetime import datetime, timedelta
+
+    monkeypatch.setenv("NORN_CONFIG_DIR", "config")
+    ch.command("CREATE TABLE test_mart (ts DateTime, region String, value Float64) "
+               "ENGINE = MergeTree ORDER BY (region, ts)")
+    start = datetime(2026, 1, 1)
+    ch.insert("test_mart", [[start + timedelta(days=d), "eu", float(d % 7)] for d in range(40)],
+              column_names=["ts", "region", "value"])
+    # horizon unset on the job -> resolved from config (30)
+    job = ForecastJob(metric="value", source="test_mart", dimensions=["region"])
+    run_id = run_job(job, client=ch)
+    n = ch.query("SELECT count() FROM forecast_point WHERE forecast_run_id=%(r)s",
+                 parameters={"r": run_id}).result_rows[0][0]
+    assert n == 30  # default horizon from config

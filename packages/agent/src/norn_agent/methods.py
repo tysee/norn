@@ -53,12 +53,12 @@ def lagged_cross_correlation(
 
 
 def granger(
-    source: list[float], target: list[float], max_lag: int
+    source: list[float], target: list[float], max_lag: int, min_points_factor: int = 3
 ) -> DependencyMeasurement:
     s = np.asarray(source, dtype=float)
     t = np.asarray(target, dtype=float)
     n = min(s.size, t.size)
-    if n < 3 * max_lag:
+    if n < min_points_factor * max_lag:
         return DependencyMeasurement(
             method="granger", lag=0, score=0.0,
             direction="inconclusive", p_value=None, confidence=0.0,

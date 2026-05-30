@@ -17,10 +17,15 @@ from __future__ import annotations
 class TimesFM25Model:
     def __init__(
         self,
-        max_context: int = 1024,
-        max_horizon: int = 1024,
+        max_context: int | None = None,
+        max_horizon: int | None = None,
         torch_compile: bool = False,
     ) -> None:
+        from norn_core.config import get_settings
+
+        tfm = get_settings(refresh=True).forecast.timesfm
+        max_context = max_context if max_context is not None else tfm.max_context
+        max_horizon = max_horizon if max_horizon is not None else tfm.max_horizon
         # Lazy imports: torch/timesfm only inside the worker env (never the fast suite).
         import timesfm
 
