@@ -11,9 +11,9 @@ services:
       # with minio/other local services); HTTP 8123 is what dbt/Lightdash use.
       - "127.0.0.1:9009:9000"
     environment:
-      CLICKHOUSE_DB: norn
-      CLICKHOUSE_USER: norn
-      CLICKHOUSE_PASSWORD: norn
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-norn}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-norn}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
     ulimits:
       nofile:
         soft: 262144
@@ -72,10 +72,10 @@ services:
       PGUSER: lightdash
       PGPASSWORD: lightdash
       PGDATABASE: lightdash
-      LIGHTDASH_SECRET: local-dev-secret
+      LIGHTDASH_SECRET: ${LIGHTDASH_SECRET:-local-dev-secret}
       SECURE_COOKIES: "false"
       TRUST_PROXY: "true"
-      SITE_URL: http://localhost:8080
+      SITE_URL: ${SITE_URL:-http://localhost:8080}
       PORT: "8080"
       HEADLESS_BROWSER_HOST: headless-browser
       HEADLESS_BROWSER_PORT: "3000"
@@ -89,7 +89,34 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - ./dbt:/usr/app/dbt
+      - ${DBT_PROJECT_HOST_DIR:-./dbt}:/usr/app/dbt
+
+  # One-shot headless setup: registers the admin, mints a PAT, runs dbt, and
+  # creates the Lightdash project (warehouse + dbt connection) automatically.
+  # Opt-in so it never re-runs on a plain `up`:
+  #   docker compose --profile setup run --rm lightdash-init
+  lightdash-init:
+    build:
+      context: .
+      dockerfile: lightdash-init.Dockerfile
+    container_name: norn-lightdash-init
+    profiles: ["setup"]
+    depends_on:
+      - lightdash
+      - clickhouse
+    environment:
+      LIGHTDASH_URL: http://lightdash:8080
+      SITE_URL: ${SITE_URL:-http://localhost:8080}
+      DBT_PROJECT_DIR: /usr/app/dbt
+      CH_HOST: ${CH_HOST:-clickhouse}
+      LD_ADMIN_EMAIL: ${LD_ADMIN_EMAIL:-admin@norn.local}
+      LD_ADMIN_PASSWORD: ${LD_ADMIN_PASSWORD:-norn-admin-pw1}
+      LD_ADMIN_FIRST_NAME: ${LD_ADMIN_FIRST_NAME:-Norn}
+      LD_ADMIN_LAST_NAME: ${LD_ADMIN_LAST_NAME:-Admin}
+      LD_ORG_NAME: ${LD_ORG_NAME:-Norn}
+      LD_PROJECT_NAME: ${LD_PROJECT_NAME:-norn-demo}
+    volumes:
+      - ${DBT_PROJECT_HOST_DIR:-./dbt}:/usr/app/dbt
 
 volumes:
   clickhouse-data: {}
