@@ -17,6 +17,8 @@ from pathlib import Path
 
 import typer
 
+from norn_agent.analyze import analyze_dependencies
+from norn_agent.contract import DependencyJob
 from norn_core.clickhouse import get_client
 from norn_core.contract import ForecastJob
 from norn_forecast.calibration import calibrate_job
@@ -54,6 +56,16 @@ def calibrate(job_path: str = typer.Argument(..., help="path to a forecast-job Y
     apply_schema(client)
     run_id = calibrate_job(job, client=client)
     typer.echo(f"calibration run_id={run_id}")
+
+
+@app.command()
+def deps(job_path: str = typer.Argument(..., help="path to a dependency-job YAML")) -> None:
+    """Analyze lead/lag dependencies and write evidence + the agent's explanation."""
+    job = DependencyJob.from_yaml(job_path)
+    client = get_client()
+    apply_schema(client)
+    run_id = analyze_dependencies(job, client=client)
+    typer.echo(f"deps run_id={run_id}")
 
 
 @app.command()

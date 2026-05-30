@@ -502,14 +502,14 @@ name = "cohere"
 version = "7.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "fastavro" },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "pydantic-core" },
-    { name = "requests" },
-    { name = "tokenizers" },
-    { name = "types-requests" },
-    { name = "typing-extensions" },
+    { name = "fastavro", marker = "sys_platform != 'emscripten'" },
+    { name = "httpx", marker = "sys_platform != 'emscripten'" },
+    { name = "pydantic", marker = "sys_platform != 'emscripten'" },
+    { name = "pydantic-core", marker = "sys_platform != 'emscripten'" },
+    { name = "requests", marker = "sys_platform != 'emscripten'" },
+    { name = "tokenizers", marker = "sys_platform != 'emscripten'" },
+    { name = "types-requests", marker = "sys_platform != 'emscripten'" },
+    { name = "typing-extensions", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e4/18/37fe97d764acc9e7c9c51e77797e8cb9b12074d5d30988e4dda21f0256cd/cohere-7.0.2.tar.gz", hash = "sha256:18961c06b717d102ac4dde4d12a3664f55af9714a311bd3de55f30f815ec94ee", size = 208688, upload-time = "2026-05-29T13:59:26Z" }
 wheels = [
@@ -1684,6 +1684,7 @@ name = "norn-cli"
 version = "0.0.0"
 source = { editable = "cli" }
 dependencies = [
+    { name = "norn-agent" },
     { name = "norn-core" },
     { name = "norn-forecast" },
     { name = "norn-integration" },
@@ -1692,6 +1693,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "norn-agent", editable = "packages/agent" },
     { name = "norn-core", editable = "packages/core" },
     { name = "norn-forecast", editable = "packages/forecast" },
     { name = "norn-integration", editable = "packages/integration" },
@@ -3147,7 +3149,7 @@ name = "tokenizers"
 version = "0.23.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "huggingface-hub" },
+    { name = "huggingface-hub", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c1/60/21f715d9faba5f5407ff759472ade058ec4a507ad62bcea47cb847239a73/tokenizers-0.23.1.tar.gz", hash = "sha256:1feeeadf865a7915adc25445dea30e9933e593c31bb96c277cee36de227c8bfa", size = 365748, upload-time = "2026-04-27T14:43:25.606Z" }
 wheels = [
@@ -3210,7 +3212,7 @@ name = "types-requests"
 version = "2.33.0.20260518"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "urllib3" },
+    { name = "urllib3", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e0/01/c5a19253fe1ac159159ddf9a3a07cec8bb5e486ec4d9002ad2821da0e5d2/types_requests-2.33.0.20260518.tar.gz", hash = "sha256:df7bd3bfe0ca8402dfb841e7d9be714bb5578203283d66d7dc4ef69343449a5e", size = 24752, upload-time = "2026-05-18T06:07:37.966Z" }
 wheels = [
