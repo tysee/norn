@@ -1674,7 +1674,7 @@ requires-dist = [
     { name = "norn-core", editable = "packages/core" },
     { name = "norn-integration", editable = "packages/integration" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "pydantic-ai", specifier = ">=0.0.14" },
+    { name = "pydantic-ai", specifier = ">=1.104,<2" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "statsmodels", specifier = ">=0.14" },
 ]

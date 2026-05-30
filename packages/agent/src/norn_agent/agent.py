@@ -43,7 +43,7 @@ def build_agent(model: str | None = None) -> Agent:
         from norn_core.config import get_settings
 
         model = get_settings(refresh=True).agent.model
-    return Agent(model, output_type=DependencyDecision, system_prompt=SYSTEM_PROMPT)
+    return Agent(model, output_type=DependencyDecision, instructions=SYSTEM_PROMPT)
 
 
 def judge_dependencies(
