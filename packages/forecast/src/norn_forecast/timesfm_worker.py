@@ -1,13 +1,17 @@
 """
 packages/forecast/src/norn_forecast/timesfm_worker.py
 
-FastAPI-воркер прогнозов. Модель инъектируется, поэтому контракт тестируется
-без torch; реальная модель TimesFM подставляется в контейнере.
+FastAPI-воркер прогнозов платформы norn — HTTP-граница вокруг модели. Изолирует
+тяжёлый torch/TimesFM в отдельном процессе (контейнере): TimesFMForecaster ходит
+сюда по сети. Модель задаётся через Protocol и инъектируется, поэтому HTTP-контракт
+можно тестировать на фейковой модели без torch, а реальную TimesFM подставлять
+только в контейнере воркера.
 
 Методы:
-- TimesFMModel — Protocol с predict(values, horizon, quantiles) -> list[dict].
-- ForecastRequest — pydantic-схема запроса.
-- create_app(model) -> FastAPI — приложение с POST /forecast и GET /health.
+- TimesFMModel — Protocol: predict(values, horizon, quantiles) -> list[dict].
+- ForecastRequest — pydantic-схема тела запроса (values/horizon/quantiles).
+- create_app(model) -> FastAPI — приложение с POST /forecast и GET /health,
+  замыкающее переданную модель.
 """
 from __future__ import annotations
 

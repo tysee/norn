@@ -1,14 +1,18 @@
 """
 packages/forecast/src/norn_forecast/forecaster.py
 
-Интерфейс форкастера и адаптеры. Делает baseline и TimesFM взаимозаменяемыми
-для runner и калибровки.
+Единый интерфейс форкастера и его адаптеры для платформы norn. Прячет за общим
+Protocol две реализации — лёгкую baseline и тяжёлую TimesFM — так, что runner и
+калибровка не зависят от модели, а выбор делается по полю job.model. TimesFM
+вынесен в отдельный HTTP-воркер, поэтому torch в этот процесс не тянется.
 
 Классы/методы:
-- Forecaster — Protocol с forecast(values, horizon) -> list[dict].
-- BaselineForecaster — обёртка над seasonal_naive_forecast.
-- TimesFMForecaster — HTTP-клиент к torch-воркеру (без torch в этом процессе).
-- make_forecaster(job, timesfm_url=None) -> Forecaster — выбор по job.model.
+- Forecaster — Protocol: forecast(values, horizon) -> list[dict] (строки с
+  horizon_step/y_hat/p10/p50/p90).
+- BaselineForecaster — обёртка над seasonal_naive_forecast (seasonal-naive).
+- TimesFMForecaster — HTTP-клиент к torch-воркеру: POST /forecast, без torch здесь.
+- make_forecaster(job, timesfm_url=None) -> Forecaster — фабрика: по job.model
+  возвращает TimesFM (url из конфига) либо baseline (с сезонностью job).
 """
 from __future__ import annotations
 

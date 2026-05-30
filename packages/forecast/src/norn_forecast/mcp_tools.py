@@ -1,16 +1,29 @@
 """
 packages/forecast/src/norn_forecast/mcp_tools.py
 
-Логика инструментов MCP-слоя (агентский интерфейс). Чистые функции: на вход
-ClickHouse-клиент, на выход JSON-совместимые dict'ы. Читают контракт-таблицы
-forecast_point / forecast_segment; протокол MCP добавляется в mcp_server.py.
+Логика инструментов MCP-слоя платформы norn (агентский интерфейс) без самого
+протокола. Чистые функции «запрос -> ответ»: на вход ClickHouse-клиент и
+параметры, на выход JSON-совместимые dict'ы. Читают контракт-таблицы forecast_*
+и dependency-таблицы, всегда от свежайшего прогона. Обёртка FastMCP, которая
+регистрирует эти функции как сетевые инструменты, живёт в mcp_server.py.
 
 Методы:
-- get_forecast(client, metric, segment, horizon=None) -> list[dict]
-- get_expected_range(client, metric, segment, horizon=None) -> list[dict]
-- classify_levels_vs_band(client, metric, segment, levels, horizon=None) -> list[dict]
-- get_divergence(client, metric, segment, current_value) -> dict
-- get_calibration(client, metric, segment) -> dict
+- get_forecast(client, metric, segment, horizon=None) -> list[dict] — точки
+  последнего прогноза (y_hat + p10/p50/p90).
+- get_expected_range(client, metric, segment, horizon=None) -> list[dict] —
+  ожидаемый коридор p10..p90 и его ширина по шагам.
+- classify_levels_vs_band(client, metric, segment, levels, horizon=None) ->
+  list[dict] — где заданные уровни относительно коридора (below/in/above).
+- get_divergence(client, metric, segment, current_value) -> dict — попадает ли
+  текущее значение в коридор ближайшего горизонта.
+- get_calibration(client, metric, segment) -> dict — последние метрики качества
+  (coverage/wape/mape/bias) из forecast_segment.
+- get_dependencies(client, target_segment, metric) -> list[dict] — lead/lag
+  зависимости на целевой сегмент: числовые методы + вердикт агента.
+- get_dependency_history(client, target_segment, source_segment, metric, limit=20)
+  -> list[dict] — хронология одной зависимости (улики + решение по каждому прогону).
+Внутренние помощники:
+- _latest_run_id(client, metric, segment) -> str | None — id свежайшего прогноза.
 """
 from __future__ import annotations
 
@@ -139,6 +152,7 @@ def get_calibration(client: Client, metric: str, segment: str) -> dict:
 
 
 def get_dependencies(client, target_segment: str, metric: str) -> list[dict]:
+    # --- свежайший прогон анализа зависимостей по целевому сегменту ---
     run = client.query(
         "SELECT analysis_run_id FROM dependency_explanation "
         "WHERE target_segment=%(t)s AND metric_name=%(m)s "
@@ -148,11 +162,14 @@ def get_dependencies(client, target_segment: str, metric: str) -> list[dict]:
     if not run:
         return []
     run_id = run[0][0]
+
+    # --- вердикты агента по каждому источнику этого прогона ---
     rels = client.query(
         "SELECT source_segment, lag, direction, is_real, confidence, explanation, "
         "caveats, change_note FROM dependency_explanation WHERE analysis_run_id=%(r)s",
         parameters={"r": run_id},
     ).result_rows
+    # --- к каждому вердикту подмешиваем подтверждающие числовые методы ---
     out = []
     for r in rels:
         source = r[0]
@@ -183,6 +200,7 @@ def get_dependency_history(
     client, target_segment: str, source_segment: str, metric: str, limit: int = 20
 ) -> list[dict]:
     """Chronological log of a dependency: each past run's evidence + the agent's decision."""
+    # --- последние N прогонов по паре источник->цель (новые первыми) ---
     runs = client.query(
         "SELECT analysis_run_id, is_real, confidence, lag, direction, change_note, created_at "
         "FROM dependency_explanation "
@@ -190,6 +208,8 @@ def get_dependency_history(
         f"ORDER BY created_at DESC LIMIT {int(limit)}",
         parameters={"t": target_segment, "s": source_segment, "m": metric},
     ).result_rows
+
+    # --- по каждому прогону: решение агента + числовые методы той же эпохи ---
     history = []
     for run in runs:
         run_id = run[0]

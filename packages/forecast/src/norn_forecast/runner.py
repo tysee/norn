@@ -1,11 +1,20 @@
 """
 packages/forecast/src/norn_forecast/runner.py
 
-Прогон forecast-job: извлечение рядов по сегментам из ClickHouse, прогноз
-выбранным форкастером и запись строк контракта (forecast_point/forecast_run).
+Исполнитель forecast-job платформы norn — оркестрация одного прогона. Раскрывает
+job в набор сегментов, тянет последние context_length точек ряда из ClickHouse,
+прогоняет через выбранный форкастер и материализует результат в контракт-таблицы:
+будущие точки в forecast_point, сводку прогона в forecast_run. Эти таблицы затем
+читают MCP-инструменты, которыми пользуется агент.
 
 Методы:
-- run_job(job, client, forecaster=None) -> str — выполняет job, возвращает run_id.
+- run_job(job, client, forecaster=None) -> str — выполняет весь прогон,
+  возвращает run_id.
+Внутренние помощники:
+- _segments(client, job) -> list[dict] — список сегментов (DISTINCT по dimensions).
+- _segment_key(dims) -> str — стабильный строковый ключ сегмента ("all" без dims).
+- _series(client, job, dims) -> (timestamps, values) — последние точки ряда сегмента
+  в хронологическом порядке.
 """
 from __future__ import annotations
 
@@ -51,6 +60,7 @@ def _series(client: Client, job: ForecastJob, dims: dict) -> tuple[list[datetime
 
 
 def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = None) -> str:
+    # --- подготовка прогона: id, форкастер, шаг времени, список сегментов ---
     job = job.resolved()
     run_id = str(uuid.uuid4())
     forecaster = forecaster or make_forecaster(job)
@@ -59,6 +69,7 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
     segments = _segments(client, job)
     points: list[list] = []
 
+    # --- по каждому сегменту: ряд -> прогноз -> строки будущих точек ---
     for dims in segments:
         ts, vals = _series(client, job, dims)
         if not vals:
@@ -67,6 +78,7 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
         last_ts = ts[-1]
         fc = forecaster.forecast(vals, job.horizon)
         now = datetime.now(UTC)
+        # будущая метка времени = последняя фактическая + шаг * номер горизонта
         for row in fc:
             points.append([
                 run_id, job.metric, seg_key,
@@ -76,6 +88,7 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
                 None, job.model, now,
             ])
 
+    # --- запись прогноза в forecast_point ---
     if points:
         client.insert(
             "forecast_point", points,
@@ -86,6 +99,7 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
             ],
         )
 
+    # --- сводка прогона в forecast_run (всегда, даже без точек) ---
     client.insert(
         "forecast_run",
         [[run_id, job.metric, "success", job.model, "v0",

@@ -1,14 +1,18 @@
 """
 packages/forecast/src/norn_forecast/calibration.py
 
-Rolling-origin калибровка: несколько cutoff'ов, hold-out, сравнение факта с
-прогнозом и интервалами p10/p90. Пишет метрики на сегмент в forecast_segment.
+Rolling-origin калибровка прогнозов платформы norn. Несколько раз «отматывает»
+ряд назад на горизонт (cutoff'ы), строит прогноз только по прошлому и сравнивает
+его с реальным hold-out: насколько факт попадает в интервал p10..p90 (coverage)
+и насколько точна центральная оценка (wape/mape/bias). Так измеряется доверие к
+форкастеру по каждому сегменту; метрики складываются в контракт-таблицу
+forecast_segment, откуда их читает агент через MCP-инструмент get_calibration.
 
 Методы:
 - backtest_metrics(values, forecaster, horizon, n_cutoffs) -> dict —
-  coverage/wape/mape/bias/n_points по ряду.
-- calibrate_job(job, client, forecaster=None) -> str — по сегментам job,
-  запись в forecast_segment, возвращает run_id.
+  coverage/wape/mape/bias/n_points по одному ряду (чистая функция, без ввода-вывода).
+- calibrate_job(job, client, forecaster=None) -> str — прогон по всем сегментам
+  job, запись метрик в forecast_segment; возвращает run_id калибровки.
 """
 from __future__ import annotations
 
@@ -26,6 +30,7 @@ from norn_forecast.runner import _segment_key, _segments, _series
 def backtest_metrics(
     values: list[float], forecaster: Forecaster, horizon: int, n_cutoffs: int = 3
 ) -> dict:
+    # --- rolling-origin прогон: копим пары (факт, прогноз) по всем cutoff'ам ---
     n = len(values)
     actual: list[float] = []
     yhat: list[float] = []
@@ -49,6 +54,7 @@ def backtest_metrics(
     if not actual:
         return {"coverage": 0.0, "wape": 0.0, "mape": 0.0, "bias": 0.0, "n_points": 0}
 
+    # --- агрегированные метрики качества по накопленным парам ---
     a = np.array(actual)
     yh = np.array(yhat)
     p_lo = np.array(lo)
@@ -71,9 +77,12 @@ def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | Non
     job = job.resolved()
     from norn_core.config import get_settings
 
+    # --- параметры прогона и выбор форкастера ---
     n_cutoffs = get_settings(refresh=True).forecast.calibration.n_cutoffs
     forecaster = forecaster or make_forecaster(job)
     run_id = str(uuid.uuid4())
+
+    # --- посегментная калибровка: ряд из ClickHouse -> метрики -> строка вставки ---
     rows: list[list] = []
     for dims in _segments(client, job):
         _ts, vals = _series(client, job, dims)
@@ -86,6 +95,8 @@ def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | Non
             m["wape"], m["mape"], m["coverage"], m["bias"],
             datetime.now(UTC),
         ])
+
+    # --- пакетная запись метрик в контракт-таблицу forecast_segment ---
     if rows:
         client.insert(
             "forecast_segment", rows,
