@@ -9,8 +9,10 @@ LLM-агента: достаёт свежие ряды двух сегменто
 оценивал дрейф зависимости.
 
 Публичные функции:
-- analyze_dependencies(job, client, agent=None) -> str — выполняет полный проход
-  для одной job и возвращает analysis_run_id, связывающий все записанные строки.
+- analyze_dependencies(job, client, agent=None) -> AnalysisResult — выполняет
+  полный проход для одной job. Статистика (metric_dependency) пишется всегда; при
+  недоступности LLM (LLMUnavailable) объяснение пропускается с ERROR-логом и полным
+  traceback, а результат явно сообщает деградацию (explained=False + причина).
 
 Внутренние помощники:
 - _prior_measurements — улики последнего прошлого прогона для той же тройки
@@ -20,16 +22,27 @@ LLM-агента: достаёт свежие ряды двух сегменто
 """
 from __future__ import annotations
 
+import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from clickhouse_connect.driver.client import Client
 
 from norn_core.clickhouse import _safe_identifier
 
-from norn_agent.agent import judge_dependencies
-from norn_agent.contract import DependencyJob, DependencyMeasurement
+from norn_agent.agent import LLMUnavailable, judge_dependencies
+from norn_agent.contract import DependencyDecision, DependencyJob, DependencyMeasurement
 from norn_agent.methods import METHODS
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AnalysisResult:
+    run_id: str
+    explained: bool
+    degradation_reason: str | None = None
 
 
 def _prior_measurements(client: Client, job: DependencyJob) -> list[DependencyMeasurement]:
@@ -83,7 +96,7 @@ def _align(src_ts, src_vals, tgt_ts, tgt_vals):
     return src, tgt, window
 
 
-def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
+def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> AnalysisResult:
     # --- подставить незаданные тюнинги job из конфига и выдать id прогона ---
     job = job.resolved()
     run_id = str(uuid.uuid4())
@@ -131,15 +144,18 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
         "target_segment": job.target_segment,
         "metric_name": job.metric,
     }
-    decision = judge_dependencies(measurements, meta, prior_measurements=prior, agent=agent)
-    from norn_core.config import get_settings
-
-    model_name = get_settings().agent.model
+    try:
+        decision = judge_dependencies(measurements, meta, prior_measurements=prior, agent=agent)
+        explained, reason = True, None
+    except LLMUnavailable as e:
+        logger.error("LLM explanation skipped for run %s (provider=%s model=%s): %s",
+                     run_id, a.provider, a.model, e, exc_info=True)
+        decision, explained, reason = DependencyDecision(relations=[]), False, str(e)
     # --- write-back: сохранить объяснения агента в dependency_explanation ---
     exp_rows = [
         [run_id, job.metric, r.source_segment, r.target_segment, r.lag, r.direction,
          1 if r.is_real else 0, r.confidence, r.explanation, r.caveats, r.change_note,
-         model_name, datetime.now(UTC)]
+         a.model, datetime.now(UTC)]
         for r in decision.relations
     ]
     if exp_rows:
@@ -151,4 +167,4 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
                 "change_note", "llm_model", "created_at",
             ],
         )
-    return run_id
+    return AnalysisResult(run_id=run_id, explained=explained, degradation_reason=reason)
