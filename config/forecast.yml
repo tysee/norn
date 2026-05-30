@@ -1,0 +1,11 @@
+defaults:
+  horizon: 30
+  context_length: 512
+  seasonality: 7
+quantiles: [0.1, 0.5, 0.9]
+timesfm:
+  worker_url: "http://localhost:9100"
+  max_context: 1024
+  max_horizon: 1024
+calibration:
+  n_cutoffs: 3
