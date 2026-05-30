@@ -60,9 +60,14 @@ class TimesFM25Model:
             horizon=horizon, inputs=[np.asarray(values, dtype=float)]
         )
         # point_forecast: (1, horizon); quantile_forecast: (1, horizon, 10).
-        # Quantile columns are [mean, q10, q20, ..., q90] -> p10=idx1, p50=idx5, p90=idx9.
+        # Quantile columns are [mean, q10, q20, ..., q90] -> column = round(q*10).
         point = point_forecast[0]
         quant = quantile_forecast[0]
+
+        def _col(q: float) -> int:
+            return int(round(q * 10))
+
+        lo, mid, hi = quantiles[0], quantiles[1], quantiles[2]
 
         # --- раскладка квантильных столбцов в p10/p50/p90 по шагам горизонта ---
         rows: list[dict] = []
@@ -71,9 +76,9 @@ class TimesFM25Model:
                 {
                     "horizon_step": h + 1,
                     "y_hat": float(point[h]),
-                    "p10": float(quant[h][1]),
-                    "p50": float(quant[h][5]),
-                    "p90": float(quant[h][9]),
+                    "p10": float(quant[h][_col(lo)]),
+                    "p50": float(quant[h][_col(mid)]),
+                    "p90": float(quant[h][_col(hi)]),
                 }
             )
         return rows
