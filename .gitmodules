@@ -1,0 +1,3 @@
+[submodule "instances/crypto"]
+	path = instances/crypto
+	url = git@github.com:tysee/norn-crypto-instance.git
