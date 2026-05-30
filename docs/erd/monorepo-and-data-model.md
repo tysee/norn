@@ -134,6 +134,15 @@ use_dependencies (взять подтверждённые зависимости
 передаёт TimesFM как dynamic_numerical_covariates (forecast_with_covariates). Без ковариат —
 обычный прогноз (дефолт, без изменений). Baseline ковариаты игнорирует.
 
+**Конфиг — YAML-native без скрытых дефолтов:** поля настроек не имеют Python-дефолтов; значение
+берётся из `config/<section>.yml` (или env-override), отсутствие обязательного ключа → явный
+`ValidationError` на старте. Секрет БД (`password`) — только из env `NORN_DB_PASSWORD`. LLM-режим
+вывода (`agent.output_mode`: native|tool|prompted) и `agent.base_url` — явная конфигурация, без
+фолбеков в коде. **Деградация LLM явная:** `judge_dependencies` поднимает `LLMUnavailable`,
+`analyze_dependencies` ловит на границе (ERROR-лог с traceback), возвращает `AnalysisResult`
+(`explained=False` + причина), CLI печатает `⚠ LLM explanation skipped: …`; статистика
+(`metric_dependency`) пишется всегда.
+
 ---
 
 ## 7. Связь с диаграммами
