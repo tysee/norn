@@ -56,33 +56,50 @@ from norn_agent.agent import _build_model  # noqa: E402
 from norn_core.config import AgentSettings  # noqa: E402
 
 
+def _agent_settings(**overrides):
+    """Build a complete AgentSettings (no field defaults anymore — pass every key)."""
+    base = dict(
+        provider="ollama",
+        model="gemma4:e2b",
+        base_url="http://localhost:11434/v1",
+        output_mode="native",
+        max_lag=10,
+        context_length=512,
+        methods=["lagged_cross_correlation", "granger"],
+        granger_min_points_factor=3,
+        granger_significance=0.05,
+    )
+    base.update(overrides)
+    return AgentSettings(**base)
+
+
 def test_build_model_ollama_no_key():
-    m = _build_model(AgentSettings(provider="ollama", model="gemma4:e2b", base_url=None))
+    m = _build_model(_agent_settings(provider="ollama", model="gemma4:e2b"))
     # OllamaModel wraps the model name; no API key required
     assert "gemma4:e2b" in repr(m) or getattr(m, "model_name", "") == "gemma4:e2b"
 
 
 def test_build_model_openrouter_uses_env_key(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "k-or")
-    m = _build_model(AgentSettings(provider="openrouter", model="anthropic/claude-sonnet-4-5"))
+    m = _build_model(_agent_settings(provider="openrouter", model="anthropic/claude-sonnet-4-5", base_url=None))
     assert "claude-sonnet-4-5" in repr(m) or getattr(m, "model_name", "") == "anthropic/claude-sonnet-4-5"
 
 
 def test_build_model_anthropic_uses_env_key(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k-an")
-    m = _build_model(AgentSettings(provider="anthropic-api", model="claude-sonnet-4-5"))
+    m = _build_model(_agent_settings(provider="anthropic-api", model="claude-sonnet-4-5", base_url=None))
     assert m is not None
 
 
 def test_build_model_openai_oauth_token(monkeypatch):
     monkeypatch.setenv("NORN_OPENAI_OAUTH_TOKEN", "tok")
-    m = _build_model(AgentSettings(provider="openai-oauth", model="gpt-4o-mini"))
+    m = _build_model(_agent_settings(provider="openai-oauth", model="gpt-4o-mini", base_url=None))
     assert m is not None
 
 
 def test_build_model_unknown_provider():
     with pytest.raises(ValueError):
-        _build_model(AgentSettings(provider="bogus", model="x"))
+        _build_model(_agent_settings(provider="bogus", model="x", base_url=None))
 
 
 def test_judge_degrades_when_build_agent_fails(monkeypatch):
@@ -101,22 +118,43 @@ def test_judge_degrades_when_build_agent_fails(monkeypatch):
     assert decision.relations == []                           # degraded, no crash
 
 
-def test_output_type_native_for_ollama():
-    # Local models (Ollama) lack reliable tool-calling -> constrain via native JSON-schema mode.
+def test_output_type_native_mode():
+    # output_mode=native -> NativeOutput (config-driven, not provider-hardcoded).
     from pydantic_ai import NativeOutput
 
     from norn_agent.agent import _output_type
-    from norn_core.config import AgentSettings
 
-    ot = _output_type(AgentSettings(provider="ollama", model="gemma4:e2b"))
+    ot = _output_type(_agent_settings(provider="ollama", model="gemma4:e2b", output_mode="native"))
     assert isinstance(ot, NativeOutput)
 
 
-def test_output_type_default_for_cloud():
-    # Cloud providers use the default tool-calling output mode (the bare model class).
+def test_output_type_tool_mode():
+    # output_mode=tool -> the bare model class (default tool-calling).
     from norn_agent.agent import _output_type
     from norn_agent.contract import DependencyDecision
-    from norn_core.config import AgentSettings
 
-    assert _output_type(AgentSettings(provider="anthropic-api", model="claude-sonnet-4-5")) is DependencyDecision
-    assert _output_type(AgentSettings(provider="openai-api", model="gpt-4o-mini")) is DependencyDecision
+    assert _output_type(_agent_settings(provider="anthropic-api", model="claude-sonnet-4-5",
+                                        base_url=None, output_mode="tool")) is DependencyDecision
+
+
+def test_build_model_ollama_requires_base_url():
+    import pytest
+    from norn_agent.agent import _build_model
+    with pytest.raises(ValueError):
+        _build_model(_agent_settings(provider="ollama", model="gemma4:e2b", base_url=None))
+
+
+def test_output_type_from_mode():
+    from pydantic_ai import NativeOutput, PromptedOutput
+    from norn_agent.agent import _output_type
+    from norn_agent.contract import DependencyDecision
+
+    def cfg(mode):
+        return _agent_settings(provider="ollama", model="m", base_url="http://x", output_mode=mode)
+
+    assert isinstance(_output_type(cfg("native")), NativeOutput)
+    assert isinstance(_output_type(cfg("prompted")), PromptedOutput)
+    assert _output_type(cfg("tool")) is DependencyDecision
+    import pytest
+    with pytest.raises(ValueError):
+        _output_type(cfg("bogus"))

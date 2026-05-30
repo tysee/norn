@@ -53,10 +53,9 @@ def _build_model(a):
         from pydantic_ai.models.ollama import OllamaModel
         from pydantic_ai.providers.ollama import OllamaProvider
 
-        return OllamaModel(
-            a.model,
-            provider=OllamaProvider(base_url=a.base_url or "http://localhost:11434/v1"),
-        )
+        if not a.base_url:
+            raise ValueError("agent.base_url is required for the ollama provider")
+        return OllamaModel(a.model, provider=OllamaProvider(base_url=a.base_url))
     if p in ("openai-api", "openai-oauth"):
         from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.providers.openai import OpenAIProvider
@@ -84,19 +83,19 @@ def _build_model(a):
 
 
 def _output_type(a):
-    """Выбрать режим структурированного вывода под провайдера.
-
-    Локальные модели (Ollama) ненадёжно вызывают инструменты (tool-calling), а
-    pydantic-ai по умолчанию добывает структурированный вывод именно через вызов
-    инструмента — на gemma это приводит к UnexpectedModelBehavior. Для ollama
-    принуждаем модель к схеме нативным JSON-schema-режимом провайдера (NativeOutput).
-    Облачные провайдеры остаются на дефолтном tool-calling (они под него заточены).
-    """
-    if a.provider == "ollama":
+    """Режим структурированного вывода берётся из config (agent.output_mode), без хардкода под провайдера."""
+    m = a.output_mode
+    if m == "tool":
+        return DependencyDecision
+    if m == "native":
         from pydantic_ai import NativeOutput
 
         return NativeOutput(DependencyDecision)
-    return DependencyDecision
+    if m == "prompted":
+        from pydantic_ai import PromptedOutput
+
+        return PromptedOutput(DependencyDecision)
+    raise ValueError(f"unknown agent.output_mode: {m!r}")
 
 
 def build_agent(model=None) -> Agent:
