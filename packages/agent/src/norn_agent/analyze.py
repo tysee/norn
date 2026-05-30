@@ -65,6 +65,7 @@ def _align(src_ts, src_vals, tgt_ts, tgt_vals):
 
 
 def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
+    job = job.resolved()
     run_id = str(uuid.uuid4())
     s_ts, s_v = _series(client, job.mart, job.metric, job.source_segment, job.context_length)
     t_ts, t_v = _series(client, job.mart, job.metric, job.target_segment, job.context_length)

@@ -8,14 +8,16 @@ from norn_agent.contract import (
 )
 
 
-def test_job_defaults_and_yaml(tmp_path: Path):
+def test_job_tunables_default_none_and_resolved(tmp_path: Path, monkeypatch):
     # metric is required (platform is domain-agnostic — no default metric)
     job = DependencyJob(source_segment="symbol=BTCUSDT", target_segment="symbol=TONUSDT", metric="log_return")
     assert job.metric == "log_return"
     assert job.mart == "mart_metric"
-    assert job.max_lag == 10
-    assert job.context_length == 512
-    assert job.methods == ["lagged_cross_correlation", "granger"]
+    assert job.max_lag is None and job.context_length is None and job.methods is None
+    monkeypatch.setenv("NORN_CONFIG_DIR", "config")
+    r = job.resolved()
+    assert r.max_lag == 10 and r.context_length == 512
+    assert r.methods == ["lagged_cross_correlation", "granger"]
 
     p = tmp_path / "deps.yml"
     p.write_text(

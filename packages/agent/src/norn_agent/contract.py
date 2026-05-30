@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class DependencyJob(BaseModel):
@@ -21,15 +21,24 @@ class DependencyJob(BaseModel):
     target_segment: str
     metric: str  # domain metric_name (no default — platform is domain-agnostic)
     mart: str = "mart_metric"
-    max_lag: int = 10
-    context_length: int = 512
-    methods: list[str] = Field(
-        default_factory=lambda: ["lagged_cross_correlation", "granger"]
-    )
+    max_lag: int | None = None
+    context_length: int | None = None
+    methods: list[str] | None = None
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "DependencyJob":
         return cls.model_validate(yaml.safe_load(Path(path).read_text()))
+
+    def resolved(self) -> "DependencyJob":
+        """Fill unset tunables from the config layer (explicit job values win)."""
+        from norn_core.config import get_settings
+
+        a = get_settings(refresh=True).agent
+        return self.model_copy(update={
+            "max_lag": self.max_lag if self.max_lag is not None else a.max_lag,
+            "context_length": self.context_length if self.context_length is not None else a.context_length,
+            "methods": self.methods if self.methods is not None else list(a.methods),
+        })
 
 
 class DependencyMeasurement(BaseModel):
