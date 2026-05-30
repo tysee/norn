@@ -29,9 +29,9 @@ class ForecastJob(BaseModel):
     source: str  # ClickHouse table, e.g. "analytics.mart_metric"
     grain: Grain = Grain.daily
     dimensions: list[str] = Field(default_factory=list)
-    horizon: int = 30
-    context_length: int = 512
-    seasonality: int = 7
+    horizon: int | None = None
+    context_length: int | None = None
+    seasonality: int | None = None
     model: str = "baseline-seasonal-naive"
     schedule: str | None = None
 
@@ -39,6 +39,17 @@ class ForecastJob(BaseModel):
     def from_yaml(cls, path: str | Path) -> "ForecastJob":
         data = yaml.safe_load(Path(path).read_text())
         return cls.model_validate(data)
+
+    def resolved(self) -> "ForecastJob":
+        """Fill unset tunables from the config layer (explicit job values win)."""
+        from norn_core.config import get_settings
+
+        d = get_settings(refresh=True).forecast.defaults
+        return self.model_copy(update={
+            "horizon": self.horizon if self.horizon is not None else d.horizon,
+            "context_length": self.context_length if self.context_length is not None else d.context_length,
+            "seasonality": self.seasonality if self.seasonality is not None else d.seasonality,
+        })
 
 
 class ForecastPoint(BaseModel):

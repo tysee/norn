@@ -4,14 +4,26 @@ from pathlib import Path
 from norn_core.contract import ForecastJob, ForecastPoint, Grain
 
 
-def test_forecast_job_defaults():
+def test_forecast_job_tunables_default_none():
     job = ForecastJob(metric="sales", source="analytics.mart_metric")
     assert job.grain is Grain.daily
-    assert job.horizon == 30
-    assert job.context_length == 512
-    assert job.seasonality == 7
+    assert job.horizon is None
+    assert job.context_length is None
+    assert job.seasonality is None
     assert job.dimensions == []
     assert job.model == "baseline-seasonal-naive"
+
+
+def test_forecast_job_resolved_fills_from_settings(monkeypatch):
+    import os
+    os.environ["NORN_CONFIG_DIR"] = "config"
+    job = ForecastJob(metric="sales", source="t").resolved()
+    assert job.horizon == 30 and job.context_length == 512 and job.seasonality == 7
+
+
+def test_forecast_job_explicit_overrides_config():
+    job = ForecastJob(metric="sales", source="t", horizon=7).resolved()
+    assert job.horizon == 7  # explicit wins
 
 
 def test_forecast_job_from_yaml(tmp_path: Path):

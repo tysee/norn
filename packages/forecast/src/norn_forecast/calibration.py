@@ -68,6 +68,7 @@ def backtest_metrics(
 
 
 def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = None) -> str:
+    job = job.resolved()
     from norn_core.config import get_settings
 
     n_cutoffs = get_settings(refresh=True).forecast.calibration.n_cutoffs
