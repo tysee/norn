@@ -29,11 +29,16 @@ class Forecaster(Protocol):
 
 
 class BaselineForecaster:
-    def __init__(self, seasonality: int = 7) -> None:
+    def __init__(
+        self,
+        seasonality: int = 7,
+        quantiles: tuple[float, float, float] = (0.1, 0.5, 0.9),
+    ) -> None:
         self.seasonality = seasonality
+        self.quantiles = quantiles
 
     def forecast(self, values: list[float], horizon: int) -> list[dict]:
-        return seasonal_naive_forecast(values, horizon, self.seasonality)
+        return seasonal_naive_forecast(values, horizon, self.seasonality, self.quantiles)
 
 
 class TimesFMForecaster:
@@ -63,4 +68,7 @@ def make_forecaster(job: ForecastJob, timesfm_url: str | None = None) -> Forecas
 
             timesfm_url = get_settings(refresh=True).forecast.timesfm.worker_url
         return TimesFMForecaster(timesfm_url)
-    return BaselineForecaster(job.seasonality if job.seasonality is not None else 7)
+    from norn_core.config import get_settings
+
+    q = tuple(get_settings(refresh=True).forecast.quantiles)
+    return BaselineForecaster(job.seasonality if job.seasonality is not None else 7, q)
