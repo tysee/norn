@@ -20,6 +20,8 @@ cli/src/norn_cli/main.py
 """
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Annotated
@@ -36,7 +38,9 @@ from norn_integration.schema import apply_schema
 
 app = typer.Typer(help="norn — vendor-neutral forecasting layer")
 
-COMPOSE = Path(__file__).resolve().parents[3] / "deploy" / "docker-compose.yml"
+# Default local-dev compose file (source checkout). Overridable via NORN_COMPOSE_FILE
+# so `up` is not tied to a fixed repo layout (e.g. when norn-cli is pip-installed).
+DEFAULT_COMPOSE = Path(__file__).resolve().parents[3] / "deploy" / "docker-compose.yml"
 
 
 @app.command("schema-apply")
@@ -124,9 +128,34 @@ def mcp() -> None:
 
 @app.command()
 def up() -> None:
-    """Bring up the local sidecar (ClickHouse) in Docker and apply the schema."""
+    """[local-dev only] Bring up a local ClickHouse sidecar via Docker Compose.
+
+    This is a developer convenience, not a platform requirement: the platform
+    connects to ClickHouse purely via config/env (NORN_CLICKHOUSE_URL or the
+    NORN_DB_* settings). For cloud/k8s, point those at your managed ClickHouse
+    and skip `norn up`. Override the compose file with NORN_COMPOSE_FILE.
+    """
+    # --- pre-flight: this command needs local Docker; fail clearly, not cryptically ---
+    if shutil.which("docker") is None:
+        typer.secho(
+            "`norn up` is a local-dev convenience and needs Docker installed. "
+            "For cloud/k8s, set NORN_CLICKHOUSE_URL to your managed ClickHouse "
+            "and skip `norn up`.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(1)
+    compose = Path(os.environ.get("NORN_COMPOSE_FILE", DEFAULT_COMPOSE))
+    if not compose.is_file():
+        typer.secho(
+            f"compose file not found: {compose}. Set NORN_COMPOSE_FILE to your "
+            "docker-compose.yml (local-dev only; cloud/k8s should skip `norn up`).",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(1)
     subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE), "up", "-d", "clickhouse"], check=True
+        ["docker", "compose", "-f", str(compose), "up", "-d", "clickhouse"], check=True
     )
     typer.echo("clickhouse up; run `norn schema-apply` once it is healthy")
 

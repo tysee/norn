@@ -59,3 +59,24 @@ def test_schema_apply_command(ch, monkeypatch):
     result = runner.invoke(app, ["schema-apply"])
     assert result.exit_code == 0, result.output
     assert "schema applied" in result.output.lower()
+
+
+def test_up_requires_docker(monkeypatch):
+    # `norn up` is a local-dev convenience: with Docker absent it must exit cleanly
+    # with a helpful message, not crash on a docker subprocess.
+    monkeypatch.setattr(cli_main.shutil, "which", lambda _: None)
+    monkeypatch.setattr(cli_main.subprocess, "run",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run docker")))
+    result = runner.invoke(app, ["up"])
+    assert result.exit_code == 1
+
+
+def test_up_missing_compose_file(monkeypatch, tmp_path):
+    # Docker present but the compose file (NORN_COMPOSE_FILE) is missing -> clear exit,
+    # no cryptic path crash (covers the pip-install case where deploy/ is absent).
+    monkeypatch.setattr(cli_main.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setenv("NORN_COMPOSE_FILE", str(tmp_path / "absent.yml"))
+    monkeypatch.setattr(cli_main.subprocess, "run",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run docker")))
+    result = runner.invoke(app, ["up"])
+    assert result.exit_code == 1
