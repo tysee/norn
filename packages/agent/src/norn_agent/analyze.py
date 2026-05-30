@@ -1,11 +1,22 @@
 """
 packages/agent/src/norn_agent/analyze.py
 
-Оркестрация анализа зависимостей: чтение свежих рядов из mart_metric, прогон
-методов-улик, запись metric_dependency, суждение агента -> dependency_explanation.
+Оркестратор одного прохода анализа зависимостей — точка сборки слоя в платформе
+norn. Связывает витрину метрик (ClickHouse mart_metric), статистические методы и
+LLM-агента: достаёт свежие ряды двух сегментов, выравнивает их по общему времени,
+прогоняет методы-улики, фиксирует улики в metric_dependency, а структурированное
+решение агента — в dependency_explanation. Знает о прошлом прогоне, чтобы агент
+оценивал дрейф зависимости.
 
-Методы:
-- analyze_dependencies(job, client, agent=None) -> str (analysis_run_id).
+Публичные функции:
+- analyze_dependencies(job, client, agent=None) -> str — выполняет полный проход
+  для одной job и возвращает analysis_run_id, связывающий все записанные строки.
+
+Внутренние помощники:
+- _prior_measurements — улики последнего прошлого прогона для той же тройки
+  метрика/source/target (для drift-aware суждения).
+- _series — чтение последних context_length точек ряда для (метрика, сегмент).
+- _align — выравнивание двух рядов по общим временным меткам + окно наблюдения.
 """
 from __future__ import annotations
 
@@ -21,6 +32,7 @@ from norn_agent.methods import METHODS
 
 def _prior_measurements(client: Client, job: DependencyJob) -> list[DependencyMeasurement]:
     """Measurements from the most recent PRIOR run for this metric/source/target."""
+    # --- найти id последнего прошлого прогона для этой тройки ---
     run = client.query(
         "SELECT analysis_run_id FROM metric_dependency "
         "WHERE metric_name=%(m)s AND source_segment=%(s)s AND target_segment=%(t)s "
@@ -29,6 +41,7 @@ def _prior_measurements(client: Client, job: DependencyJob) -> list[DependencyMe
     ).result_rows
     if not run:
         return []
+    # --- поднять улики того прогона и восстановить модели измерений ---
     rows = client.query(
         "SELECT method, lag, score, direction, p_value, confidence FROM metric_dependency "
         "WHERE analysis_run_id=%(r)s",
@@ -53,11 +66,14 @@ def _series(client: Client, mart: str, metric: str, segment: str, context_length
 
 
 def _align(src_ts, src_vals, tgt_ts, tgt_vals):
+    # --- индекс target по времени для поиска общих меток ---
     tmap = dict(zip(tgt_ts, tgt_vals))
+    # --- пересечение по ts, отсортированное по времени ---
     common = sorted(
         ((ts, sv, tmap[ts]) for ts, sv in zip(src_ts, src_vals) if ts in tmap),
         key=lambda x: x[0],
     )
+    # --- разложить на параллельные ряды и вычислить окно наблюдения ---
     src = [c[1] for c in common]
     tgt = [c[2] for c in common]
     window = (common[0][0], common[-1][0]) if common else (datetime(1970, 1, 1), datetime(1970, 1, 1))
@@ -65,17 +81,21 @@ def _align(src_ts, src_vals, tgt_ts, tgt_vals):
 
 
 def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
+    # --- подставить незаданные тюнинги job из конфига и выдать id прогона ---
     job = job.resolved()
     run_id = str(uuid.uuid4())
+    # --- extract: прочитать ряды обоих сегментов и выровнять по общему времени ---
     s_ts, s_v = _series(client, job.mart, job.metric, job.source_segment, job.context_length)
     t_ts, t_v = _series(client, job.mart, job.metric, job.target_segment, job.context_length)
     src, tgt, (w0, w1) = _align(s_ts, s_v, t_ts, t_v)
 
+    # --- compute: прогнать выбранные методы-улики ---
     measurements = [METHODS[name](src, tgt, job.max_lag) for name in job.methods]
 
     # Look up the previous run BEFORE inserting this run's rows (drift-aware judging).
     prior = _prior_measurements(client, job)
 
+    # --- write-back: зафиксировать улики методов в metric_dependency ---
     dep_rows = [
         [run_id, job.metric, job.source_segment, job.target_segment, m.method,
          m.lag, m.score, m.direction, m.p_value, m.confidence, w0, w1, datetime.now(UTC)]
@@ -90,6 +110,7 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
         ],
     )
 
+    # --- judge: отдать улики (и прошлые) агенту за решением о реальности ---
     meta = {
         "source_segment": job.source_segment,
         "target_segment": job.target_segment,
@@ -99,6 +120,7 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
     from norn_core.config import get_settings
 
     model_name = get_settings(refresh=True).agent.model
+    # --- write-back: сохранить объяснения агента в dependency_explanation ---
     exp_rows = [
         [run_id, job.metric, r.source_segment, r.target_segment, r.lag, r.direction,
          1 if r.is_real else 0, r.confidence, r.explanation, r.caveats, r.change_note,
