@@ -9,6 +9,7 @@ dependencies = [
     "scipy>=1.11",
     "statsmodels>=0.14",
     "pydantic-ai>=1.104,<2",
+    "pydantic-ai-slim[openai,anthropic]>=1.104,<2",
 ]
 
 [build-system]
