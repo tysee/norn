@@ -8,7 +8,7 @@ forecast_point / forecast_segment; протокол MCP добавляется �
 Методы:
 - get_forecast(client, metric, segment, horizon=None) -> list[dict]
 - get_expected_range(client, metric, segment, horizon=None) -> list[dict]
-- check_ladder_rungs(client, metric, segment, rungs, horizon=None) -> list[dict]
+- classify_levels_vs_band(client, metric, segment, levels, horizon=None) -> list[dict]
 - get_divergence(client, metric, segment, current_value) -> dict
 - get_calibration(client, metric, segment) -> dict
 """
@@ -71,28 +71,28 @@ def get_expected_range(
     ]
 
 
-def check_ladder_rungs(
+def classify_levels_vs_band(
     client: Client,
     metric: str,
     segment: str,
-    rungs: list[float],
+    levels: list[float],
     horizon: int | None = None,
 ) -> list[dict]:
     pts = get_forecast(client, metric, segment, horizon)
     if not pts:
-        return [{"rung": r, "verdict": "no_forecast"} for r in rungs]
+        return [{"level": x, "verdict": "no_forecast"} for x in levels]
     band_low = min(p["p10"] for p in pts)
     band_high = max(p["p90"] for p in pts)
     out: list[dict] = []
-    for r in rungs:
-        if r < band_low:
+    for x in levels:
+        if x < band_low:
             verdict = "below_band"
-        elif r > band_high:
+        elif x > band_high:
             verdict = "above_band"
         else:
             verdict = "in_band"
         out.append(
-            {"rung": r, "verdict": verdict, "band_low": band_low, "band_high": band_high}
+            {"level": x, "verdict": verdict, "band_low": band_low, "band_high": band_high}
         )
     return out
 
@@ -136,3 +136,78 @@ def get_calibration(client: Client, metric: str, segment: str) -> dict:
         "bias": c[3],
         "n_points": c[4],
     }
+
+
+def get_dependencies(client, target_segment: str, metric: str) -> list[dict]:
+    run = client.query(
+        "SELECT analysis_run_id FROM dependency_explanation "
+        "WHERE target_segment=%(t)s AND metric_name=%(m)s "
+        "ORDER BY created_at DESC LIMIT 1",
+        parameters={"t": target_segment, "m": metric},
+    ).result_rows
+    if not run:
+        return []
+    run_id = run[0][0]
+    rels = client.query(
+        "SELECT source_segment, lag, direction, is_real, confidence, explanation, "
+        "caveats, change_note FROM dependency_explanation WHERE analysis_run_id=%(r)s",
+        parameters={"r": run_id},
+    ).result_rows
+    out = []
+    for r in rels:
+        source = r[0]
+        methods = client.query(
+            "SELECT method, lag, score, p_value, direction FROM metric_dependency "
+            "WHERE analysis_run_id=%(r)s AND source_segment=%(s)s",
+            parameters={"r": run_id, "s": source},
+        ).result_rows
+        out.append({
+            "source_segment": source,
+            "target_segment": target_segment,
+            "lag": r[1],
+            "direction": r[2],
+            "is_real": bool(r[3]),
+            "confidence": r[4],
+            "explanation": r[5],
+            "caveats": r[6],
+            "change_note": r[7],
+            "methods": [
+                {"method": m[0], "lag": m[1], "score": m[2], "p_value": m[3], "direction": m[4]}
+                for m in methods
+            ],
+        })
+    return out
+
+
+def get_dependency_history(
+    client, target_segment: str, source_segment: str, metric: str, limit: int = 20
+) -> list[dict]:
+    """Chronological log of a dependency: each past run's evidence + the agent's decision."""
+    runs = client.query(
+        "SELECT analysis_run_id, is_real, confidence, lag, direction, change_note, created_at "
+        "FROM dependency_explanation "
+        "WHERE target_segment=%(t)s AND source_segment=%(s)s AND metric_name=%(m)s "
+        f"ORDER BY created_at DESC LIMIT {int(limit)}",
+        parameters={"t": target_segment, "s": source_segment, "m": metric},
+    ).result_rows
+    history = []
+    for run in runs:
+        run_id = run[0]
+        methods = client.query(
+            "SELECT method, lag, score, p_value FROM metric_dependency "
+            "WHERE analysis_run_id=%(r)s AND source_segment=%(s)s",
+            parameters={"r": run_id, "s": source_segment},
+        ).result_rows
+        history.append({
+            "analysis_run_id": run_id,
+            "created_at": run[6].isoformat(),
+            "is_real": bool(run[1]),
+            "confidence": run[2],
+            "lag": run[3],
+            "direction": run[4],
+            "change_note": run[5],
+            "methods": [
+                {"method": m[0], "lag": m[1], "score": m[2], "p_value": m[3]} for m in methods
+            ],
+        })
+    return history

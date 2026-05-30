@@ -48,18 +48,18 @@ def test_get_expected_range_widths(ch):
     assert out[0]["width"] == pytest.approx(20.0)
 
 
-def test_check_ladder_rungs_classifies_against_band(ch):
+def test_classify_levels_vs_band_classifies_against_band(ch):
     _seed_points(ch, "run-A")  # band envelope: p10 min=90, p90 max=112
-    out = mcp_tools.check_ladder_rungs(ch, "close", "symbol=BTC", [80.0, 100.0, 130.0])
-    verdicts = {r["rung"]: r["verdict"] for r in out}
+    out = mcp_tools.classify_levels_vs_band(ch, "close", "symbol=BTC", [80.0, 100.0, 130.0])
+    verdicts = {r["level"]: r["verdict"] for r in out}
     assert verdicts[80.0] == "below_band"
     assert verdicts[100.0] == "in_band"
     assert verdicts[130.0] == "above_band"
 
 
-def test_check_ladder_rungs_no_forecast(ch):
-    out = mcp_tools.check_ladder_rungs(ch, "close", "symbol=NOPE", [100.0])
-    assert out == [{"rung": 100.0, "verdict": "no_forecast"}]
+def test_classify_levels_vs_band_no_forecast(ch):
+    out = mcp_tools.classify_levels_vs_band(ch, "close", "symbol=NOPE", [100.0])
+    assert out == [{"level": 100.0, "verdict": "no_forecast"}]
 
 
 def test_get_divergence_positions(ch):

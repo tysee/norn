@@ -84,6 +84,12 @@ Postgres + headless-browser) + generic dbt-проект `deploy/dbt/` (profiles 
 get_divergence / get_calibration поверх таблиц `forecast_point` / `forecast_segment`.
 «Lightdash для людей, MCP для агентов». `get_dependencies` (BTC↔TON) — Plan 5.
 
+**Dependency-агент (`packages/agent`):** PydanticAI-агент анализа зависимостей. Методы
+(lagged cross-correlation + Granger на log-returns) дают улики → агент судит реальность и
+объясняет → `metric_dependency` (числа) + `dependency_explanation` (решение). `norn deps
+<job.yml>`; MCP `get_dependencies` отдаёт и числа, и решение агента. Тесты — на PydanticAI
+`TestModel` (без реального LLM). Лаг — будущая ковариата TimesFM (XReg).
+
 ---
 
 ## 5. Совместимость Python 3.14+ (честный риск)
