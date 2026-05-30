@@ -89,8 +89,20 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> str:
     t_ts, t_v = _series(client, job.mart, job.metric, job.target_segment, job.context_length)
     src, tgt, (w0, w1) = _align(s_ts, s_v, t_ts, t_v)
 
-    # --- compute: прогнать выбранные методы-улики ---
-    measurements = [METHODS[name](src, tgt, job.max_lag) for name in job.methods]
+    # --- compute: прогнать выбранные методы-улики (granger получает тюнинги из конфига) ---
+    from norn_core.config import get_settings
+
+    a = get_settings(refresh=True).agent
+    measurements = []
+    for name in job.methods:
+        if name == "granger":
+            measurements.append(
+                METHODS[name](src, tgt, job.max_lag,
+                               min_points_factor=a.granger_min_points_factor,
+                               significance=a.granger_significance)
+            )
+        else:
+            measurements.append(METHODS[name](src, tgt, job.max_lag))
 
     # Look up the previous run BEFORE inserting this run's rows (drift-aware judging).
     prior = _prior_measurements(client, job)

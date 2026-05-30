@@ -40,3 +40,15 @@ def test_granger_short_window_inconclusive():
 
 def test_methods_registry():
     assert set(METHODS) == {"lagged_cross_correlation", "granger"}
+
+
+def test_granger_significance_param_controls_direction():
+    import numpy as np
+    rng = np.random.default_rng(0)
+    source = rng.standard_normal(400)
+    target = np.zeros(400)
+    for t in range(2, 400):
+        target[t] = 0.7 * source[t - 2] + 0.1 * rng.standard_normal()
+    # an impossibly strict alpha -> even a real signal is judged inconclusive
+    m = granger(source.tolist(), target.tolist(), max_lag=5, significance=1e-12)
+    assert m.direction == "inconclusive"

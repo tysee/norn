@@ -58,3 +58,24 @@ def test_timesfm_forecaster_url_from_settings(monkeypatch):
     f = fc.make_forecaster(job)
     assert isinstance(f, fc.TimesFMForecaster)
     assert f._base == "http://worker-from-settings:9100"
+
+
+def test_timesfm_forecaster_quantiles_from_settings(monkeypatch):
+    import json
+    import httpx
+    import norn_forecast.forecaster as fc
+    from norn_core.contract import ForecastJob
+
+    monkeypatch.setenv("NORN_CONFIG_DIR", "config")
+    seen = {}
+
+    def handler(req):
+        seen.update(json.loads(req.content))
+        return httpx.Response(200, json={"rows": []})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    job = ForecastJob(metric="close", source="t", model="timesfm-2.5")
+    f = fc.make_forecaster(job)
+    f._client = client  # inject mock transport
+    f.forecast([1.0, 2.0, 3.0], horizon=1)
+    assert seen["quantiles"] == [0.1, 0.5, 0.9]  # from config, not a hardcoded literal

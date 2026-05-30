@@ -108,6 +108,7 @@ class AgentSettings(_YamlSection):
     context_length: int = 512
     methods: list[str] = ["lagged_cross_correlation", "granger"]
     granger_min_points_factor: int = 3
+    granger_significance: float = 0.05
 
 
 class McpSettings(_YamlSection):
