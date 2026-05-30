@@ -25,6 +25,8 @@ from datetime import UTC, datetime
 
 from clickhouse_connect.driver.client import Client
 
+from norn_core.clickhouse import _safe_identifier
+
 from norn_agent.agent import judge_dependencies
 from norn_agent.contract import DependencyJob, DependencyMeasurement
 from norn_agent.methods import METHODS
@@ -56,6 +58,7 @@ def _prior_measurements(client: Client, job: DependencyJob) -> list[DependencyMe
 
 
 def _series(client: Client, mart: str, metric: str, segment: str, context_length: int):
+    mart = _safe_identifier(mart)
     rows = client.query(
         f"SELECT ts, value FROM (SELECT ts, value FROM {mart} "
         "WHERE metric_name=%(m)s AND segment_key=%(s)s ORDER BY ts DESC "

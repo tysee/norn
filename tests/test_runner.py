@@ -1,7 +1,17 @@
 from datetime import datetime, timedelta
 
+import pytest
+
 from norn_core.contract import ForecastJob
 from norn_forecast.runner import run_job
+
+
+def test_run_job_rejects_unsafe_source(ch):
+    # An attacker-controlled source identifier must be rejected before any SQL
+    # is executed against the warehouse (defense-in-depth), not interpolated.
+    job = ForecastJob(metric="value", source="bad; drop", horizon=3, seasonality=7)
+    with pytest.raises(ValueError):
+        run_job(job, client=ch)
 
 
 def _seed_mart(ch, rows):
