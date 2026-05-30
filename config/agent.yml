@@ -8,3 +8,5 @@ max_lag: 10                            # максимальный сдвиг (la
 context_length: 512                    # длина исторического окна (число точек), подаваемого в анализ
 methods: [lagged_cross_correlation, granger]  # статистические методы оценки зависимостей
 granger_min_points_factor: 3           # множитель: минимум точек для теста Грейнджера = factor * max_lag
+# доля значимости Granger: p-value ниже -> зависимость считается значимой (source_leads)
+granger_significance: 0.05

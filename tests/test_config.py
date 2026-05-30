@@ -43,3 +43,17 @@ def test_clickhouse_url_alias_overrides_db(tmp_path, monkeypatch):
     monkeypatch.setenv("NORN_CLICKHOUSE_URL", "http://u:p@h:8123/db")
     s = get_settings(refresh=True)
     assert s.database.dsn == "http://u:p@h:8123/db"
+
+
+def test_agent_granger_settings(tmp_path, monkeypatch):
+    (tmp_path / "agent.yml").write_text(
+        "model: m\nmax_lag: 10\ncontext_length: 512\n"
+        "methods: [a]\ngranger_min_points_factor: 3\ngranger_significance: 0.05\n"
+    )
+    for n in ("database", "forecast", "mcp"):
+        (tmp_path / f"{n}.yml").write_text("{}\n")
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    from norn_core.config import get_settings
+    s = get_settings(refresh=True)
+    assert s.agent.granger_significance == 0.05
+    assert s.agent.granger_min_points_factor == 3

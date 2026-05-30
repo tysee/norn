@@ -11,8 +11,9 @@ LLM-агент. Реестр METHODS позволяет оркестратору
 Публичные функции:
 - lagged_cross_correlation(source, target, max_lag) -> DependencyMeasurement —
   ищет лаг с максимальной по модулю кросс-корреляцией; направление = кто ведёт.
-- granger(source, target, max_lag, min_points_factor=3) -> DependencyMeasurement —
-  тест причинности Грейнджера (source -> target); score = -log10(p), порог p<0.05.
+- granger(source, target, max_lag, min_points_factor=3, significance=0.05)
+  -> DependencyMeasurement — тест причинности Грейнджера (source -> target);
+  score = -log10(p), порог значимости передаётся параметром significance.
 - METHODS — реестр {name: callable} для выбора методов по DependencyJob.methods.
 """
 from __future__ import annotations
@@ -20,6 +21,11 @@ from __future__ import annotations
 import numpy as np
 
 from norn_agent.contract import DependencyMeasurement
+
+# Наименьшее представимое p-значение: F-тест может вернуть ровно 0.0 (underflow
+# крошечного p), что иначе всегда проходило бы любой положительный порог
+# significance. Приравниваем к этому полу, чтобы порог оставался реальным рычагом.
+_P_VALUE_FLOOR = 1e-12
 
 
 def lagged_cross_correlation(
@@ -63,7 +69,8 @@ def lagged_cross_correlation(
 
 
 def granger(
-    source: list[float], target: list[float], max_lag: int, min_points_factor: int = 3
+    source: list[float], target: list[float], max_lag: int,
+    min_points_factor: int = 3, significance: float = 0.05,
 ) -> DependencyMeasurement:
     # --- слишком короткий ряд для надёжного теста: вернуть нейтральную улику ---
     s = np.asarray(source, dtype=float)
@@ -100,8 +107,10 @@ def granger(
         p = float(stats["ssr_ftest"][1])
         if p < best_p:
             best_p, best_lag = p, lag
-    # --- порог значимости 0.05 -> направление; score = -log10(p) ---
-    direction = "source_leads" if best_p < 0.05 else "inconclusive"
+    # --- underflow крошечного p до ровного 0 поднимаем до пола (порог остаётся рычагом) ---
+    best_p = max(best_p, _P_VALUE_FLOOR)
+    # --- порог значимости -> направление; score = -log10(p) ---
+    direction = "source_leads" if best_p < significance else "inconclusive"
     score = float(-np.log10(best_p)) if best_p > 0 else 0.0
     return DependencyMeasurement(
         method="granger", lag=best_lag, score=score,
