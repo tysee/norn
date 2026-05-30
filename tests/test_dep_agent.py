@@ -20,10 +20,15 @@ def test_judge_returns_structured_decision_with_testmodel():
     assert len(decision.relations) >= 1
 
 
-def test_judge_degrades_on_model_error():
-    class _BoomAgent:
-        def run_sync(self, prompt):
-            raise RuntimeError("model/transport failure")
+def test_judge_raises_llm_unavailable_on_model_error():
+    import pytest
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+    from norn_agent.agent import LLMUnavailable
+
+    class _Boom:
+        def run_sync(self, _):
+            raise UnexpectedModelBehavior("boom")
 
     measurements = [
         DependencyMeasurement(method="lagged_cross_correlation", lag=2, score=0.7,
@@ -31,9 +36,8 @@ def test_judge_degrades_on_model_error():
     ]
     meta = {"source_segment": "segment=A", "target_segment": "segment=B",
             "metric_name": "log_return"}
-    decision = judge_dependencies(measurements, meta, agent=_BoomAgent())
-    assert isinstance(decision, DependencyDecision)
-    assert decision.relations == []
+    with pytest.raises(LLMUnavailable):
+        judge_dependencies(measurements, meta, agent=_Boom())
 
 
 def test_build_agent_model_from_settings(monkeypatch):
@@ -102,20 +106,20 @@ def test_build_model_unknown_provider():
         _build_model(_agent_settings(provider="bogus", model="x", base_url=None))
 
 
-def test_judge_degrades_when_build_agent_fails(monkeypatch):
+def test_judge_raises_llm_unavailable_when_build_fails(monkeypatch):
     # provider needs a key that is absent -> build_agent() raises during construction
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("NORN_AGENT_PROVIDER", "anthropic-api")
     monkeypatch.setenv("NORN_CONFIG_DIR", "config")
-    from norn_agent.agent import judge_dependencies
-    from norn_agent.contract import DependencyDecision, DependencyMeasurement
+    monkeypatch.setenv("NORN_DB_PASSWORD", "norn")
+    from norn_agent.agent import LLMUnavailable, judge_dependencies
+    from norn_agent.contract import DependencyMeasurement
 
     measurements = [DependencyMeasurement(method="granger", lag=1, score=2.0,
                                           direction="source_leads", p_value=0.01, confidence=0.99)]
     meta = {"source_segment": "symbol=BTCUSDT", "target_segment": "symbol=TONUSDT", "metric_name": "log_return"}
-    decision = judge_dependencies(measurements, meta)        # no agent injected -> build from (broken) config
-    assert isinstance(decision, DependencyDecision)
-    assert decision.relations == []                           # degraded, no crash
+    with pytest.raises(LLMUnavailable):
+        judge_dependencies(measurements, meta)               # no agent injected -> build from (broken) config
 
 
 def test_output_type_native_mode():

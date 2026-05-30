@@ -12,7 +12,9 @@ LLM-уровень слоя зависимостей: PydanticAI-агент пр
   и системным промптом; модель по умолчанию читается из настроек платформы.
 - judge_dependencies(measurements, meta, prior_measurements=None, agent=None)
   -> DependencyDecision — формирует промпт из текущих (и опционально прошлых)
-  улик и возвращает решение агента по каждой зависимости.
+  улик и возвращает решение агента по каждой зависимости. При известном
+  инфраструктурном сбое (нет креденшела/неверный конфиг/ошибка модели или
+  транспорта) поднимает LLMUnavailable — без тихой деградации.
 """
 from __future__ import annotations
 
@@ -24,6 +26,11 @@ from pydantic_ai import Agent
 logger = logging.getLogger(__name__)
 
 from norn_agent.contract import DependencyDecision, DependencyMeasurement
+
+
+class LLMUnavailable(RuntimeError):
+    """LLM/провайдер недоступен или вернул некорректный ответ — объяснение зависимости пропущено."""
+
 
 SYSTEM_PROMPT = (
     "You are a disciplined analyst of lead/lag dependencies between metric time series. "
@@ -120,10 +127,12 @@ def judge_dependencies(
     agent: Agent | None = None,
 ) -> DependencyDecision:
     # --- сборка модели/агента и вызов — всё под try ---
-    # Деградируем мягко: при сбое сборки провайдера (нет креденшела/неверный
-    # конфиг) ИЛИ сбое модели/транспорта возвращаем пустое решение, чтобы
-    # analyze_dependencies всё равно записал числовые улики (metric_dependency)
-    # и просто не создавал строк dependency_explanation.
+    # Узко перехватываем только известные инфраструктурные сбои (нет креденшела,
+    # неверный конфиг, ошибка модели/транспорта) и ре-райзим типизированно
+    # LLMUnavailable. Граница (analyze_dependencies) ловит его, логирует traceback
+    # и явно деградирует. Программные баги НЕ маскируются — пробрасываются как есть.
+    from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior, UserError
+
     try:
         agent = agent or build_agent()
         # --- собрать промпт: шапка с сегментами/метрикой + текущие улики методов ---
@@ -139,9 +148,6 @@ def judge_dependencies(
             )
         # --- синхронный вызов агента -> структурированное решение ---
         return agent.run_sync(prompt).output
-    except Exception:
-        logger.warning(
-            "judge_dependencies: agent build/LLM call failed; degrading to empty decision",
-            exc_info=False,
-        )
-        return DependencyDecision(relations=[])
+    except (KeyError, ValueError, UnexpectedModelBehavior, ModelHTTPError, UserError,
+            ConnectionError, OSError) as e:
+        raise LLMUnavailable(f"{type(e).__name__}: {e}") from e
