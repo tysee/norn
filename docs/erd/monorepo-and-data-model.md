@@ -90,6 +90,12 @@ get_divergence / get_calibration поверх таблиц `forecast_point` / `f
 <job.yml>`; MCP `get_dependencies` отдаёт и числа, и решение агента. Тесты — на PydanticAI
 `TestModel` (без реального LLM). Лаг — будущая ковариата TimesFM (XReg).
 
+**LLM-провайдер агента** конфигурируем (`config/agent.yml` → `provider`): ollama (локальный,
+дефолт `gemma4:e2b`), openai-api, openai-oauth (bearer), openrouter, anthropic-api. Секреты —
+из env (OPENAI_API_KEY / NORN_OPENAI_OAUTH_TOKEN / OPENROUTER_API_KEY / ANTHROPIC_API_KEY).
+Для локального Ollama: запущенный демон на :11434 + `ollama pull gemma4:e2b`. При недоступном/
+неверном провайдере `norn deps` деградирует (пишет metric_dependency, без объяснения), не падает.
+
 ---
 
 ## 5. Совместимость Python 3.14+ (честный риск)
@@ -127,6 +133,15 @@ use_dependencies (взять подтверждённые зависимости
 выровненный по таймстемпам ряд лидера на контекст+горизонт (policy strict|ffill из config) и
 передаёт TimesFM как dynamic_numerical_covariates (forecast_with_covariates). Без ковариат —
 обычный прогноз (дефолт, без изменений). Baseline ковариаты игнорирует.
+
+**Конфиг — YAML-native без скрытых дефолтов:** поля настроек не имеют Python-дефолтов; значение
+берётся из `config/<section>.yml` (или env-override), отсутствие обязательного ключа → явный
+`ValidationError` на старте. Секрет БД (`password`) — только из env `NORN_DB_PASSWORD`. LLM-режим
+вывода (`agent.output_mode`: native|tool|prompted) и `agent.base_url` — явная конфигурация, без
+фолбеков в коде. **Деградация LLM явная:** `judge_dependencies` поднимает `LLMUnavailable`,
+`analyze_dependencies` ловит на границе (ERROR-лог с traceback), возвращает `AnalysisResult`
+(`explained=False` + причина), CLI печатает `⚠ LLM explanation skipped: …`; статистика
+(`metric_dependency`) пишется всегда.
 
 ---
 

@@ -7,10 +7,12 @@ YAML-native типизированный config-слой платформы norn
 настроек для всех сервисов платформы: воркеры и агент не парсят файлы напрямую, а
 получают валидированные типизированные объекты с предсказуемым приоритетом источников.
 
-Приоритет источников: init-аргументы (тесты) > env > YAML-файл > дефолт поля.
+Приоритет источников: init-аргументы (тесты) > env > YAML-файл. Python-дефолтов полей
+больше нет — YAML/env являются единственными источниками обязательных значений; отсутствие
+ключа во всех источниках → явный ValidationError (а не тихая подстановка дефолта).
 
 Классы/методы:
-- _YamlSection — базовый класс секции; настраивает порядок источников (env > yaml > defaults).
+- _YamlSection — базовый класс секции; настраивает порядок источников (env > yaml).
 - DatabaseSettings — подключение к ClickHouse (host/port/user/password/database/secure + DSN-override).
 - ForecastDefaults / TimesFMSettings / CalibrationSettings — вложенные блоки настроек прогноза.
 - ForecastSettings — секция прогноза (дефолты, квантили, параметры TimesFM, калибровка).
@@ -40,7 +42,7 @@ def _config_dir() -> Path:
 
 
 class _YamlSection(BaseSettings):
-    """Base: env > config/<YAML_FILE> > field default."""
+    """Base: env > config/<YAML_FILE> (no field defaults — required keys must exist)."""
 
     YAML_FILE: ClassVar[str] = ""  # overridden per section
 
@@ -59,70 +61,74 @@ class _YamlSection(BaseSettings):
         yaml_src = YamlConfigSettingsSource(
             settings_cls, yaml_file=_config_dir() / cls.YAML_FILE
         )
-        # --- порядок = приоритет: init kwargs (tests) > env > yaml > defaults ---
+        # --- порядок = приоритет: init kwargs (tests) > env > yaml (без дефолтов полей) ---
         return (init_settings, env_settings, yaml_src)
 
 
 class DatabaseSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_DB_", env_nested_delimiter="__", extra="ignore")
     YAML_FILE: ClassVar[str] = "database.yml"
-    host: str = "localhost"
-    port: int = 8123
-    user: str = "norn"
-    password: str = "norn"
-    database: str = "norn"
-    secure: bool = False
-    # full-DSN override (back-compat): env NORN_CLICKHOUSE_URL
+    host: str
+    port: int
+    user: str
+    database: str
+    secure: bool
+    # секрет: ТОЛЬКО из env NORN_DB_PASSWORD (не в YAML, без дефолта)
+    password: str = Field(validation_alias=AliasChoices("NORN_DB_PASSWORD", "password"))
+    # единственный опциональный override (env NORN_CLICKHOUSE_URL): None = override не задан
     dsn: str | None = Field(default=None, validation_alias=AliasChoices("NORN_CLICKHOUSE_URL", "dsn"))
 
 
 class ForecastDefaults(BaseModel):
-    horizon: int = 30
-    context_length: int = 512
-    seasonality: int = 7
+    horizon: int
+    context_length: int
+    seasonality: int
 
 
 class TimesFMSettings(BaseModel):
-    worker_url: str = "http://localhost:9100"
-    max_context: int = 1024
-    max_horizon: int = 1024
+    worker_url: str
+    max_context: int
+    max_horizon: int
 
 
 class CalibrationSettings(BaseModel):
-    n_cutoffs: int = 3
+    n_cutoffs: int
 
 
 class CovariatesSettings(BaseModel):
-    horizon_policy: str = "strict"   # strict | ffill
-    xreg_mode: str = "xreg+timesfm"
+    horizon_policy: str   # strict | ffill
+    xreg_mode: str
 
 
 class ForecastSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_FORECAST_", env_nested_delimiter="__", extra="ignore")
     YAML_FILE: ClassVar[str] = "forecast.yml"
-    defaults: ForecastDefaults = ForecastDefaults()
-    quantiles: list[float] = [0.1, 0.5, 0.9]
-    timesfm: TimesFMSettings = TimesFMSettings()
-    calibration: CalibrationSettings = CalibrationSettings()
-    covariates: CovariatesSettings = CovariatesSettings()
+    defaults: ForecastDefaults
+    quantiles: list[float]
+    timesfm: TimesFMSettings
+    calibration: CalibrationSettings
+    covariates: CovariatesSettings
 
 
 class AgentSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_AGENT_", env_nested_delimiter="__", extra="ignore")
     YAML_FILE: ClassVar[str] = "agent.yml"
-    model: str = "anthropic:claude-sonnet-4-5"
-    max_lag: int = 10
-    context_length: int = 512
-    methods: list[str] = ["lagged_cross_correlation", "granger"]
-    granger_min_points_factor: int = 3
-    granger_significance: float = 0.05
+    provider: str               # ollama | openai-api | openai-oauth | openrouter | anthropic-api
+    model: str
+    base_url: str | None        # ollama: обязателен URL; cloud: null. Нет неявного фолбека.
+    output_mode: str            # native | tool | prompted
+    max_lag: int
+    context_length: int
+    methods: list[str]
+    granger_min_points_factor: int
+    granger_significance: float
 
 
 class McpSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_MCP_", env_nested_delimiter="__", extra="ignore")
     YAML_FILE: ClassVar[str] = "mcp.yml"
-    host: str = "127.0.0.1"
-    port: int = 9200
+    host: str
+    port: int
 
 
 class Settings(BaseModel):

@@ -1665,6 +1665,7 @@ dependencies = [
     { name = "norn-integration" },
     { name = "numpy" },
     { name = "pydantic-ai" },
+    { name = "pydantic-ai-slim", extra = ["anthropic", "openai"] },
     { name = "scipy" },
     { name = "statsmodels" },
 ]
@@ -1675,6 +1676,7 @@ requires-dist = [
     { name = "norn-integration", editable = "packages/integration" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pydantic-ai", specifier = ">=1.104,<2" },
+    { name = "pydantic-ai-slim", extras = ["openai", "anthropic"], specifier = ">=1.104,<2" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "statsmodels", specifier = ">=0.14" },
 ]

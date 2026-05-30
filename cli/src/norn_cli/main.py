@@ -102,8 +102,14 @@ def deps(
     try:
         apply_schema(client)
         # --- считаем зависимости, пишем evidence и печатаем run_id ---
-        run_id = analyze_dependencies(job, client=client)
-        typer.echo(f"deps run_id={run_id}")
+        res = analyze_dependencies(job, client=client)
+        typer.echo(f"deps run_id={res.run_id}")
+        if not res.explained:
+            typer.secho(
+                f"⚠ LLM explanation skipped: {res.degradation_reason}",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
     finally:
         client.close()
 

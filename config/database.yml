@@ -8,3 +8,4 @@ port: 8123        # HTTP-порт ClickHouse (нативный HTTP-интерф
 user: norn        # имя пользователя БД
 database: norn    # имя базы данных, где живёт контракт-схема
 secure: false     # использовать ли TLS-подключение (true для защищённого соединения)
+# password: берётся из env NORN_DB_PASSWORD (секрет, не в YAML)
