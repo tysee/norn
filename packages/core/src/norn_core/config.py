@@ -24,6 +24,7 @@ from __future__ import annotations
 import functools
 import os
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_settings import (
@@ -41,7 +42,7 @@ def _config_dir() -> Path:
 class _YamlSection(BaseSettings):
     """Base: env > config/<YAML_FILE> > field default."""
 
-    YAML_FILE: str = ""  # overridden per section
+    YAML_FILE: ClassVar[str] = ""  # overridden per section
 
     model_config = SettingsConfigDict(env_nested_delimiter="__", extra="ignore")
 
@@ -56,7 +57,7 @@ class _YamlSection(BaseSettings):
     ):
         # --- источник YAML: файл секции из каталога NORN_CONFIG_DIR ---
         yaml_src = YamlConfigSettingsSource(
-            settings_cls, yaml_file=_config_dir() / cls.model_fields["YAML_FILE"].default
+            settings_cls, yaml_file=_config_dir() / cls.YAML_FILE
         )
         # --- порядок = приоритет: init kwargs (tests) > env > yaml > defaults ---
         return (init_settings, env_settings, yaml_src)
@@ -64,7 +65,7 @@ class _YamlSection(BaseSettings):
 
 class DatabaseSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_DB_", env_nested_delimiter="__", extra="ignore")
-    YAML_FILE: str = "database.yml"
+    YAML_FILE: ClassVar[str] = "database.yml"
     host: str = "localhost"
     port: int = 8123
     user: str = "norn"
@@ -93,7 +94,7 @@ class CalibrationSettings(BaseModel):
 
 class ForecastSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_FORECAST_", env_nested_delimiter="__", extra="ignore")
-    YAML_FILE: str = "forecast.yml"
+    YAML_FILE: ClassVar[str] = "forecast.yml"
     defaults: ForecastDefaults = ForecastDefaults()
     quantiles: list[float] = [0.1, 0.5, 0.9]
     timesfm: TimesFMSettings = TimesFMSettings()
@@ -102,7 +103,7 @@ class ForecastSettings(_YamlSection):
 
 class AgentSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_AGENT_", env_nested_delimiter="__", extra="ignore")
-    YAML_FILE: str = "agent.yml"
+    YAML_FILE: ClassVar[str] = "agent.yml"
     model: str = "anthropic:claude-sonnet-4-5"
     max_lag: int = 10
     context_length: int = 512
@@ -113,7 +114,7 @@ class AgentSettings(_YamlSection):
 
 class McpSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_MCP_", env_nested_delimiter="__", extra="ignore")
-    YAML_FILE: str = "mcp.yml"
+    YAML_FILE: ClassVar[str] = "mcp.yml"
     host: str = "127.0.0.1"
     port: int = 9200
 
