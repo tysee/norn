@@ -75,10 +75,10 @@ def test_get_divergence_no_forecast(ch):
     assert d["position"] == "no_forecast" and d["in_band"] is None
 
 
-def _seed_segment(ch, run_id, metric="close", segment="symbol=BTC"):
+def _seed_segment(ch, run_id, metric="close", segment="symbol=BTC", is_sparse=0):
     ch.insert(
         "forecast_segment",
-        [[run_id, metric, segment, 21, 0, 0.05, 0.04, 0.83, -0.1, datetime(2026, 5, 30)]],
+        [[run_id, metric, segment, 21, is_sparse, 0.05, 0.04, 0.83, -0.1, datetime(2026, 5, 30)]],
         column_names=[
             "forecast_run_id", "metric_name", "segment_key", "n_points", "is_sparse",
             "wape", "mape", "coverage", "bias", "created_at",
@@ -130,3 +130,21 @@ def test_get_forecast_status_for_series(ch):
 
 def test_get_forecast_status_unknown_segment(ch):
     assert mcp_tools.get_forecast_status(ch, "close", "symbol=NOPE") == {"available": False}
+
+
+def test_list_metrics_and_segments(ch):
+    _seed_points(ch, "run-A", metric="close", segment="symbol=BTC")
+    _seed_points(ch, "run-A", metric="close", segment="symbol=ETH")
+    _seed_points(ch, "run-A", metric="volume", segment="symbol=BTC")
+    metrics = mcp_tools.list_metrics(ch)
+    assert "close" in metrics and "volume" in metrics
+    segs = mcp_tools.list_segments(ch, "close")
+    assert "symbol=BTC" in segs and "symbol=ETH" in segs
+    assert "symbol=BTC" in segs and len(mcp_tools.list_segments(ch, "volume")) == 1
+
+
+def test_get_calibration_includes_is_sparse(ch):
+    _seed_segment(ch, "cal-sparse", is_sparse=1)
+    out = mcp_tools.get_calibration(ch, "close", "symbol=BTC")
+    assert out["available"] is True
+    assert out["is_sparse"] is True

@@ -29,6 +29,8 @@ TOOL_NAMES = [
     "get_dependency_history",
     "get_run_status",
     "get_forecast_status",
+    "list_metrics",
+    "list_segments",
 ]
 
 
@@ -87,5 +89,15 @@ def build_server(client=None) -> FastMCP:
     def get_forecast_status(metric: str, segment: str) -> dict:
         """Freshness + run status for a specific metric/segment forecast."""
         return mcp_tools.get_forecast_status(client, metric, segment)
+
+    @mcp.tool()
+    def list_metrics() -> list[str]:
+        """List metric names that have forecasts."""
+        return mcp_tools.list_metrics(client)
+
+    @mcp.tool()
+    def list_segments(metric: str) -> list[str]:
+        """List segment keys that have forecasts for a metric."""
+        return mcp_tools.list_segments(client, metric)
 
     return mcp

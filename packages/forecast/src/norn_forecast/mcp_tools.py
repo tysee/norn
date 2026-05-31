@@ -183,7 +183,7 @@ def get_divergence(
 
 def get_calibration(client: Client, metric: str, segment: str) -> dict:
     rows = client.query(
-        "SELECT coverage, wape, mape, bias, n_points FROM forecast_segment "
+        "SELECT coverage, wape, mape, bias, n_points, is_sparse FROM forecast_segment "
         "WHERE metric_name=%(m)s AND segment_key=%(s)s ORDER BY created_at DESC LIMIT 1",
         parameters={"m": metric, "s": segment},
     ).result_rows
@@ -197,7 +197,26 @@ def get_calibration(client: Client, metric: str, segment: str) -> dict:
         "mape": c[2],
         "bias": c[3],
         "n_points": c[4],
+        "is_sparse": bool(c[5]),
     }
+
+
+def list_metrics(client) -> list[str]:
+    """Доступные для прогноза метрики (DISTINCT из forecast_point)."""
+    rows = client.query(
+        "SELECT DISTINCT metric_name FROM forecast_point ORDER BY metric_name"
+    ).result_rows
+    return [r[0] for r in rows]
+
+
+def list_segments(client, metric: str) -> list[str]:
+    """Сегменты с прогнозом для метрики (DISTINCT из forecast_point)."""
+    rows = client.query(
+        "SELECT DISTINCT segment_key FROM forecast_point WHERE metric_name=%(m)s "
+        "ORDER BY segment_key",
+        parameters={"m": metric},
+    ).result_rows
+    return [r[0] for r in rows]
 
 
 def get_dependencies(client, target_segment: str, metric: str) -> list[dict]:
