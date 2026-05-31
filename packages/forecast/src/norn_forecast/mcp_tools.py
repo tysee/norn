@@ -17,7 +17,18 @@ packages/forecast/src/norn_forecast/mcp_tools.py
 - get_divergence(client, metric, segment, current_value) -> dict — попадает ли
   текущее значение в коридор ближайшего горизонта.
 - get_calibration(client, metric, segment) -> dict — последние метрики качества
-  (coverage/wape/mape/bias) из forecast_segment.
+  (coverage/wape/mape/bias) из forecast_segment, плюс флаг is_sparse:bool
+  (разреженность ряда — калибровка ненадёжна, относиться к интервалам осторожно).
+- get_run_status(client) -> dict — статус/метаданные последнего прогона целиком
+  (forecast_run): модель, тайминги, segments_total/skipped, error. Глобально, по
+  started_at DESC; пустая таблица -> {available:false}.
+- get_forecast_status(client, metric, segment) -> dict — свежесть+статус прогноза
+  КОНКРЕТНОГО ряда: последняя точка (last_created_at/last_forecast_ts) и мета её
+  прогона (status/model/тайминги/error); нет точек -> {available:false}.
+- list_metrics(client) -> list[str] — discovery: доступные метрики (DISTINCT
+  metric_name из forecast_point, отсортированы).
+- list_segments(client, metric) -> list[str] — discovery: сегменты с прогнозом для
+  метрики (DISTINCT segment_key из forecast_point, отсортированы).
 - get_dependencies(client, target_segment, metric) -> list[dict] — lead/lag
   зависимости на целевой сегмент: числовые методы + вердикт агента. Якорится на
   metric_dependency (пишется всегда); вердикт LLM подмешивается LEFT-join'ом,
