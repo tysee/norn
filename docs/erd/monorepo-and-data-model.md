@@ -150,6 +150,14 @@ use_dependencies (взять подтверждённые зависимости
 (`explained=False` + причина), CLI печатает `⚠ LLM explanation skipped: …`; статистика
 (`metric_dependency`) пишется всегда.
 
+**Владение схемой контракт-таблиц (`database.manage_schema`):** norn — warehouse-table-native,
+dbt-опциональна. `true` (дефолт) — norn идемпотентно создаёт свои контракт-таблицы в своей БД
+(zero-setup, greenfield/локалка). `false` — norn НЕ выполняет DDL (только INSERT); таблицы
+заводит пользователь своим dbt/миграциями, каноническую DDL печатает `norn print-schema`; перед
+записью norn делает pre-flight проверку и при отсутствии таблиц явно падает `ContractSchemaMissing`.
+Так платформа не навязывает runtime-DDL governed-хранилищу. dbt — типичный, но не обязательный
+способ построить как витрину, так и эти таблицы.
+
 ---
 
 ## 7. Связь с диаграммами

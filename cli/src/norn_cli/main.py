@@ -31,10 +31,11 @@ import typer
 from norn_agent.analyze import analyze_dependencies
 from norn_agent.contract import DependencyJob
 from norn_core.clickhouse import get_client
+from norn_core.config import get_settings
 from norn_core.contract import ForecastJob
 from norn_forecast.calibration import calibrate_job
 from norn_forecast.runner import run_job
-from norn_integration.schema import apply_schema
+from norn_integration.schema import apply_schema, prepare_schema, schema_sql
 
 app = typer.Typer(help="norn — vendor-neutral forecasting layer")
 
@@ -45,7 +46,14 @@ DEFAULT_COMPOSE = Path(__file__).resolve().parents[3] / "deploy" / "docker-compo
 
 @app.command("schema-apply")
 def schema_apply() -> None:
-    """Apply the forecast-contract schema to ClickHouse (idempotent)."""
+    """Apply the forecast-contract schema to ClickHouse (idempotent). Honors database.manage_schema."""
+    if not get_settings().database.manage_schema:
+        typer.secho(
+            "database.manage_schema=false; norn won't run DDL. "
+            "Use `norn print-schema` + your own dbt/migrations to create the contract tables.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(1)
     # --- one-shot CLI: own the connection pool and release it on exit ---
     client = get_client()
     try:
@@ -53,6 +61,12 @@ def schema_apply() -> None:
         typer.echo("schema applied")
     finally:
         client.close()
+
+
+@app.command("print-schema")
+def print_schema() -> None:
+    """Print the canonical contract DDL (feed into your dbt/migrations when manage_schema=false)."""
+    typer.echo(schema_sql())
 
 
 @app.command()
@@ -66,7 +80,7 @@ def forecast(
     # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
     try:
-        apply_schema(client)
+        prepare_schema(client, get_settings().database.manage_schema)
         # --- запускаем прогон и печатаем идентификатор запуска ---
         run_id = run_job(job, client=client)
         typer.echo(f"run_id={run_id}")
@@ -85,7 +99,7 @@ def calibrate(
     # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
     try:
-        apply_schema(client)
+        prepare_schema(client, get_settings().database.manage_schema)
         # --- прогоняем rolling-origin калибровку и печатаем run_id ---
         run_id = calibrate_job(job, client=client)
         typer.echo(f"calibration run_id={run_id}")
@@ -104,7 +118,7 @@ def deps(
     # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
     try:
-        apply_schema(client)
+        prepare_schema(client, get_settings().database.manage_schema)
         # --- считаем зависимости, пишем evidence и печатаем run_id ---
         res = analyze_dependencies(job, client=client)
         typer.echo(f"deps run_id={res.run_id}")

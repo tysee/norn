@@ -71,6 +71,21 @@ def test_up_requires_docker(monkeypatch):
     assert result.exit_code == 1
 
 
+def test_print_schema_outputs_ddl():
+    result = runner.invoke(app, ["print-schema"])
+    assert result.exit_code == 0, result.output
+    assert "CREATE TABLE IF NOT EXISTS forecast_point" in result.output
+
+
+def test_schema_apply_refuses_when_unmanaged(monkeypatch):
+    # manage_schema=false -> schema-apply must NOT run DDL; exits 1 with guidance, never connects.
+    monkeypatch.setenv("NORN_DB_MANAGE_SCHEMA", "false")
+    monkeypatch.setattr(cli_main, "get_client",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not connect")))
+    result = runner.invoke(app, ["schema-apply"])
+    assert result.exit_code == 1
+
+
 def test_up_missing_compose_file(monkeypatch, tmp_path):
     # Docker present but the compose file (NORN_COMPOSE_FILE) is missing -> clear exit,
     # no cryptic path crash (covers the pip-install case where deploy/ is absent).
