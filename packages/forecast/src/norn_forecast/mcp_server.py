@@ -23,7 +23,7 @@ TOOL_NAMES = [
     "get_forecast",
     "get_expected_range",
     "classify_levels_vs_band",
-    "get_divergence",
+    "get_band_position",
     "get_calibration",
     "get_dependencies",
     "get_dependency_history",
@@ -59,9 +59,9 @@ def build_server(client=None) -> FastMCP:
         return mcp_tools.classify_levels_vs_band(client, metric, segment, levels, horizon)
 
     @mcp.tool()
-    def get_divergence(metric: str, segment: str, current_value: float) -> dict:
+    def get_band_position(metric: str, segment: str, current_value: float) -> dict:
         """Whether a current value sits inside the nearest-horizon forecast band."""
-        return mcp_tools.get_divergence(client, metric, segment, current_value)
+        return mcp_tools.get_band_position(client, metric, segment, current_value)
 
     @mcp.tool()
     def get_calibration(metric: str, segment: str) -> dict:

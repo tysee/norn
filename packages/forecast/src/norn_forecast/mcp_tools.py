@@ -14,7 +14,7 @@ packages/forecast/src/norn_forecast/mcp_tools.py
   ожидаемый коридор p10..p90 и его ширина по шагам.
 - classify_levels_vs_band(client, metric, segment, levels, horizon=None) ->
   list[dict] — где заданные уровни относительно коридора (below/in/above).
-- get_divergence(client, metric, segment, current_value) -> dict — попадает ли
+- get_band_position(client, metric, segment, current_value) -> dict — попадает ли
   текущее значение в коридор ближайшего горизонта.
 - get_calibration(client, metric, segment) -> dict — последние метрики качества
   (coverage/wape/mape/bias) из forecast_segment, плюс флаг is_sparse:bool
@@ -170,7 +170,7 @@ def classify_levels_vs_band(
     return out
 
 
-def get_divergence(
+def get_band_position(
     client: Client, metric: str, segment: str, current_value: float
 ) -> dict:
     pts = get_forecast(client, metric, segment, horizon=1)
