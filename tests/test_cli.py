@@ -86,6 +86,57 @@ def test_schema_apply_refuses_when_unmanaged(monkeypatch):
     assert result.exit_code == 1
 
 
+def test_print_schema_threads_retention():
+    # print-schema must substitute the configured retention into the DDL.
+    result = runner.invoke(app, ["print-schema"])
+    assert result.exit_code == 0, result.output
+    assert "TTL created_at + INTERVAL 12 MONTH" in result.output
+
+
+def test_schema_apply_threads_retention(monkeypatch):
+    # schema-apply must pass the configured retention into apply_schema.
+    fake = _FakeClient()
+    monkeypatch.setattr(cli_main, "get_client", lambda *a, **k: fake)
+    seen: dict = {}
+    monkeypatch.setattr(
+        cli_main, "apply_schema",
+        lambda client, retention_months: seen.update(retention=retention_months),
+    )
+    result = runner.invoke(app, ["schema-apply"])
+    assert result.exit_code == 0, result.output
+    assert seen["retention"] == 12
+
+
+def test_forecast_threads_retention_into_prepare(ch, tmp_path, monkeypatch):
+    from datetime import datetime, timedelta
+
+    ch.command(
+        "CREATE TABLE test_mart (ts DateTime, region String, value Float64) "
+        "ENGINE = MergeTree ORDER BY (region, ts)"
+    )
+    start = datetime(2026, 1, 1)
+    ch.insert(
+        "test_mart",
+        [[start + timedelta(days=d), "eu", float(d % 7)] for d in range(21)],
+        column_names=["ts", "region", "value"],
+    )
+    monkeypatch.setenv("NORN_CLICKHOUSE_URL", "http://norn:norn@localhost:8123/norn")
+    seen: dict = {}
+    monkeypatch.setattr(
+        cli_main, "prepare_schema",
+        lambda client, manage_schema, retention_months: seen.update(
+            retention=retention_months
+        ),
+    )
+    job = tmp_path / "job.yml"
+    job.write_text(
+        "metric: value\nsource: test_mart\ndimensions: [region]\nhorizon: 5\nseasonality: 7\n"
+    )
+    result = runner.invoke(app, ["forecast", str(job)])
+    assert result.exit_code == 0, result.output
+    assert seen["retention"] == 12
+
+
 def test_up_missing_compose_file(monkeypatch, tmp_path):
     # Docker present but the compose file (NORN_COMPOSE_FILE) is missing -> clear exit,
     # no cryptic path crash (covers the pip-install case where deploy/ is absent).

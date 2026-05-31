@@ -57,7 +57,7 @@ def schema_apply() -> None:
     # --- one-shot CLI: own the connection pool and release it on exit ---
     client = get_client()
     try:
-        apply_schema(client)
+        apply_schema(client, get_settings().forecast.retention_months)
         typer.echo("schema applied")
     finally:
         client.close()
@@ -66,7 +66,7 @@ def schema_apply() -> None:
 @app.command("print-schema")
 def print_schema() -> None:
     """Print the canonical contract DDL (feed into your dbt/migrations when manage_schema=false)."""
-    typer.echo(schema_sql())
+    typer.echo(schema_sql(get_settings().forecast.retention_months))
 
 
 @app.command()
@@ -80,7 +80,8 @@ def forecast(
     # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
     try:
-        prepare_schema(client, get_settings().database.manage_schema)
+        s = get_settings()
+        prepare_schema(client, s.database.manage_schema, s.forecast.retention_months)
         # --- запускаем прогон и печатаем идентификатор запуска ---
         run_id = run_job(job, client=client)
         typer.echo(f"run_id={run_id}")
@@ -99,7 +100,8 @@ def calibrate(
     # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
     try:
-        prepare_schema(client, get_settings().database.manage_schema)
+        s = get_settings()
+        prepare_schema(client, s.database.manage_schema, s.forecast.retention_months)
         # --- прогоняем rolling-origin калибровку и печатаем run_id ---
         run_id = calibrate_job(job, client=client)
         typer.echo(f"calibration run_id={run_id}")
@@ -118,7 +120,8 @@ def deps(
     # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
     try:
-        prepare_schema(client, get_settings().database.manage_schema)
+        s = get_settings()
+        prepare_schema(client, s.database.manage_schema, s.forecast.retention_months)
         # --- считаем зависимости, пишем evidence и печатаем run_id ---
         res = analyze_dependencies(job, client=client)
         typer.echo(f"deps run_id={res.run_id}")

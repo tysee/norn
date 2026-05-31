@@ -26,3 +26,6 @@ calibration:
 covariates:
   horizon_policy: strict
   xreg_mode: "xreg+timesfm"
+
+# Сколько месяцев хранить контракт-таблицы (TTL поверх PARTITION BY месяц). 0 = без авто-удаления.
+retention_months: 12

@@ -15,6 +15,7 @@ def _write_config(d):
         timesfm: {worker_url: "http://localhost:9100", max_context: 1024, max_horizon: 1024}
         calibration: {n_cutoffs: 3}
         covariates: {horizon_policy: strict, xreg_mode: "xreg+timesfm"}
+        retention_months: 12
     """))
     (d / "agent.yml").write_text(textwrap.dedent("""\
         provider: ollama
@@ -110,6 +111,7 @@ def test_forecast_covariates_settings(tmp_path, monkeypatch):
         "timesfm: {worker_url: u, max_context: 1024, max_horizon: 1024}\n"
         "calibration: {n_cutoffs: 3}\n"
         "covariates: {horizon_policy: strict, xreg_mode: 'xreg+timesfm'}\n"
+        "retention_months: 12\n"
     )
     monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
     from norn_core.config import get_settings
@@ -168,6 +170,13 @@ def test_missing_config_dir_raises_clear_error(tmp_path, monkeypatch):
     from norn_core.config import get_settings
     with pytest.raises(FileNotFoundError):
         get_settings(refresh=True)
+
+
+def test_forecast_retention_months(tmp_path, monkeypatch):
+    _write_config(tmp_path)
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    from norn_core.config import get_settings
+    assert get_settings(refresh=True).forecast.retention_months == 12
 
 
 def test_manage_schema_loads_and_overrides(tmp_path, monkeypatch):

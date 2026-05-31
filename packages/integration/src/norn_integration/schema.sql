@@ -11,8 +11,12 @@ CREATE TABLE IF NOT EXISTS forecast_run (
     finished_at     Nullable(DateTime),
     segments_total  UInt32,
     segments_skipped UInt32,
-    error           Nullable(String)
-) ENGINE = MergeTree ORDER BY (forecast_run_id, started_at);
+    error           Nullable(String),
+    created_at      DateTime DEFAULT now()
+) ENGINE = MergeTree
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (forecast_run_id, started_at)
+{RETENTION_MONTHS_TTL};
 
 -- forecast_point: сами прогнозные значения — по точке на (метрика, сегмент,
 -- шаг горизонта). Хранит центральную оценку y_hat, перцентили p10/p50/p90 и
@@ -30,7 +34,10 @@ CREATE TABLE IF NOT EXISTS forecast_point (
     y_actual        Nullable(Float64),
     model_name      String,
     created_at      DateTime DEFAULT now()
-) ENGINE = MergeTree ORDER BY (metric_name, segment_key, forecast_ts);
+) ENGINE = MergeTree
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (metric_name, segment_key, forecast_ts)
+{RETENTION_MONTHS_TTL};
 
 -- forecast_segment: агрегированное качество прогноза по каждому сегменту в
 -- рамках прогона — метрики ошибки (wape, mape, bias), покрытие интервалов
@@ -46,7 +53,10 @@ CREATE TABLE IF NOT EXISTS forecast_segment (
     coverage        Float64,
     bias            Float64,
     created_at      DateTime DEFAULT now()
-) ENGINE = MergeTree ORDER BY (metric_name, segment_key, forecast_run_id);
+) ENGINE = MergeTree
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (metric_name, segment_key, forecast_run_id)
+{RETENTION_MONTHS_TTL};
 
 -- metric_dependency: обнаруженные связи между сегментами метрики — результат
 -- пайплайна анализа зависимостей. Строка описывает направленную связь
@@ -66,7 +76,10 @@ CREATE TABLE IF NOT EXISTS metric_dependency (
     window_start    DateTime,
     window_end      DateTime,
     created_at      DateTime DEFAULT now()
-) ENGINE = MergeTree ORDER BY (metric_name, target_segment, source_segment, created_at);
+) ENGINE = MergeTree
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (metric_name, target_segment, source_segment, created_at)
+{RETENTION_MONTHS_TTL};
 
 -- dependency_explanation: интерпретация связей из metric_dependency,
 -- сгенерированная LLM. Хранит вердикт о реальности связи (is_real), текстовое
@@ -86,4 +99,7 @@ CREATE TABLE IF NOT EXISTS dependency_explanation (
     change_note     String,
     llm_model       String,
     created_at      DateTime DEFAULT now()
-) ENGINE = MergeTree ORDER BY (metric_name, target_segment, source_segment, created_at);
+) ENGINE = MergeTree
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (metric_name, target_segment, source_segment, created_at)
+{RETENTION_MONTHS_TTL};
