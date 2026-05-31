@@ -1,4 +1,5 @@
 %% Norn — ERD (репозиторий tysee/norn)
+%% Инвариант: домен-агностичная схема — generic-контракт (forecast_point/forecast_segment) поверх любого warehouse; конкретные метрики/размерности/значения ниже — лишь ПРИМЕРЫ (инстанс/вертикал), а не платформенные дефолты.
 %% Stores:  [META] = addon Postgres (рядом с Lightdash)
 %%          [CH]   = ClickHouse (факты, прогнозы)
 %%          [LD]   = Lightdash-owned Postgres (читаем, не владеем)
@@ -36,7 +37,7 @@ erDiagram
         uuid id PK
         uuid project_id FK
         string name
-        string source_table "CH mart"
+        string source_table "mart в warehouse (CH/BigQuery/Snowflake/Postgres — см. CONNECTION.type)"
         string timestamp_column
         string value_column
         string grain "hourly | daily | weekly"
@@ -51,7 +52,7 @@ erDiagram
     METRIC_DIMENSION {
         uuid id PK
         uuid metric_definition_id FK
-        string name "city | store_id | merchant_id ..."
+        string name "пример: размерности из конфигурации инстанса"
         string ch_type "LowCardinality(String) | String"
         boolean is_default_slice
     }
@@ -158,11 +159,11 @@ erDiagram
     FORECAST_POINT ||--o{ ACTUAL_VS_FORECAST : "forecast side"
 
     MART_METRIC {
-        datetime ts PK "[CH] dbt-built"
-        string city
-        string store_id
-        string merchant_id
-        float value "delivered_orders | gmv | ..."
+        datetime ts PK "[warehouse] dbt-built; mart определяется инстансом, столбцы/значения — примеры"
+        string dim_1 "пример: размерность инстанса"
+        string dim_2 "пример: размерность инстанса"
+        string dim_n "пример: размерность инстанса"
+        float value "любая числовая метрика (конфигурируется инстансом)"
     }
 
     ACTUAL_VS_FORECAST {

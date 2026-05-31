@@ -2,6 +2,8 @@
 
 *Дата: 29 мая 2026. Сопровождает `erd.mermaid` и `architecture.mermaid`.*
 
+> **Инвариант платформы.** norn — вендор-нейтральная, домен-АГНОСТИЧНАЯ forecasting-платформа: мультисегментный прогноз метрик и поиск зависимостей поверх любого warehouse через generic-контракт (`forecast_point`/`forecast_segment`), конфигурируемые модель/провайдер/БД и MCP-контракт. Платформенный код (`packages/*`, `cli`) НЕ несёт доменных дефолтов — ни встроенных метрик, символов, размерностей, форматов ingestion, дашбордов, промптов, ни выбора LLM-модели. Вся доменная специфика живёт в отдельном инстанс-репо (`norn-crypto-instance` — первый dogfood-инстанс, подключается submodule). GTM-фокус (первый целевой вертикал) — delivery/marketplace/e-commerce: это рыночная стратегия, а НЕ платформенный дефолт. Любой конкретный домен в этом документе (delivery-KPI вроде delivered_orders/GMV, крипто-символы BTC/TON, размерности, трансформации, выбор модели) — помеченный ПРИМЕР, указывающий на инстанс/вертикал, а не требование платформы; детали домена — в инстанс-репо.
+
 Плаг-ин-плей сайдкар к Lightdash: аналитик одной командой поднимает прогнозы и анализ зависимостей поверх существующего стека `dbt + ClickHouse + Lightdash`. Мы **не форкаем Lightdash и не пишем свой BI** — добавляем три слоя сбоку.
 
 ---
@@ -76,25 +78,30 @@ norn up         # поднять сайдкар: forecast worker + agent (FastAP
 Postgres + headless-browser) + generic dbt-проект `deploy/dbt/` (profiles → ClickHouse,
 модели `mart_metric`, `actual_vs_forecast`). TimesFM-воркер — отдельный torch-pinned
 контейнер (`deploy/timesfm.Dockerfile`), forecast-слой ходит в него по HTTP за
-`Forecaster`-интерфейсом (baseline остаётся фолбэком). Наполнение данными
-(`raw_candles`) — отдельно, вне платформы.
+`Forecaster`-интерфейсом (baseline остаётся фолбэком). Наполнение данными — raw
+datapoints (формат ingestion — выбор инстанса; крипто-инстанс: `raw_candles`) —
+отдельно, вне платформы.
 
 **MCP-слой (агенты):** `norn mcp` поднимает FastMCP-сервер (streamable-http) с
-инструментами get_forecast / get_expected_range / check_ladder_rungs /
-get_divergence / get_calibration поверх таблиц `forecast_point` / `forecast_segment`.
-«Lightdash для людей, MCP для агентов». `get_dependencies` (BTC↔TON) — Plan 5.
+инструментами get_forecast / get_expected_range / classify_levels_vs_band /
+get_divergence / get_calibration / get_dependencies / get_dependency_history поверх
+таблиц `forecast_point` / `forecast_segment`. «Lightdash для людей, MCP для агентов».
+`get_dependencies` (пример (крипто-инстанс): BTC↔TON) — Plan 5.
 
 **Dependency-агент (`packages/agent`):** PydanticAI-агент анализа зависимостей. Методы
-(lagged cross-correlation + Granger на log-returns) дают улики → агент судит реальность и
+(lagged cross-correlation + Granger на доменной трансформации ряда — пример доменной
+трансформации (крипто-инстанс): log-returns) дают улики → агент судит реальность и
 объясняет → `metric_dependency` (числа) + `dependency_explanation` (решение). `norn deps
 <job.yml>`; MCP `get_dependencies` отдаёт и числа, и решение агента. Тесты — на PydanticAI
 `TestModel` (без реального LLM). Лаг — будущая ковариата TimesFM (XReg).
 
-**LLM-провайдер агента** конфигурируем (`config/agent.yml` → `provider`): ollama (локальный,
-дефолт `gemma4:e2b`), openai-api, openai-oauth (bearer), openrouter, anthropic-api. Секреты —
-из env (OPENAI_API_KEY / NORN_OPENAI_OAUTH_TOKEN / OPENROUTER_API_KEY / ANTHROPIC_API_KEY).
-Для локального Ollama: запущенный демон на :11434 + `ollama pull gemma4:e2b`. При недоступном/
-неверном провайдере `norn deps` деградирует (пишет metric_dependency, без объяснения), не падает.
+**LLM-провайдер и модель агента** конфигурируем (`config/agent.yml` → `provider` / `model`):
+ollama (локальный), openai-api, openai-oauth (bearer), openrouter, anthropic-api. Конкретные
+модель и провайдер — выбор инстанса в `config/agent.yml`; у платформы НЕТ дефолтной LLM-модели.
+Секреты — из env (OPENAI_API_KEY / NORN_OPENAI_OAUTH_TOKEN / OPENROUTER_API_KEY /
+ANTHROPIC_API_KEY). Для локального Ollama: запущенный демон на :11434 + `ollama pull <model>`
+(модель из config инстанса). При недоступном/неверном провайдере `norn deps` деградирует
+(пишет metric_dependency, без объяснения), не падает.
 
 ---
 
