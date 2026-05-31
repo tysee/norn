@@ -21,3 +21,39 @@ def test_forecast_segment_columns(ch):
         "forecast_run_id", "metric_name", "segment_key", "n_points",
         "is_sparse", "wape", "mape", "coverage", "bias", "created_at",
     } <= cols
+
+
+def test_required_tables_lists_contract_tables():
+    from norn_integration.schema import required_tables
+    assert set(required_tables()) == {
+        "forecast_run", "forecast_point", "forecast_segment",
+        "metric_dependency", "dependency_explanation",
+    }
+
+
+def test_prepare_schema_true_creates(ch):
+    from norn_integration.schema import prepare_schema, required_tables
+    for t in required_tables():
+        ch.command(f"DROP TABLE IF EXISTS {t}")
+    prepare_schema(ch, True)
+    for t in required_tables():
+        assert str(ch.command(f"EXISTS TABLE {t}")).strip() in ("1", "True")
+
+
+def test_prepare_schema_false_ok_when_present(ch):
+    from norn_integration.schema import apply_schema, prepare_schema
+    apply_schema(ch)                       # ensure present
+    prepare_schema(ch, False)              # must not raise, must not DDL
+
+
+def test_prepare_schema_false_raises_when_missing(ch):
+    from norn_integration.schema import apply_schema, prepare_schema, ContractSchemaMissing
+    import pytest
+    apply_schema(ch)
+    ch.command("DROP TABLE IF EXISTS forecast_segment")
+    try:
+        with pytest.raises(ContractSchemaMissing) as e:
+            prepare_schema(ch, False)
+        assert "forecast_segment" in str(e.value)
+    finally:
+        apply_schema(ch)                   # restore for other tests
