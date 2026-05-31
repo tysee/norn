@@ -82,42 +82,61 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
     used_covariates = False
 
     # --- по каждому сегменту: ряд -> прогноз -> строки будущих точек ---
-    for dims in segments:
-        ts, vals = _series(client, job, dims)
-        if not vals:
-            continue
-        seg_key = _segment_key(dims)
-        last_ts = ts[-1]
-        # --- ковариаты: ряд лидера из long-mart, выровненный на контекст+горизонт ---
-        # лидер берётся из long-mart (metric_name+segment_key), независимо от job.source
-        # (это широкая per-metric витрина цели). Тянем context_length+lag точек, чтобы
-        # сдвиг (t - lag) был покрыт; value-binding параметризован, mart — через identifier.
-        covs: dict[str, list[float]] = {}
-        for spec in resolve_covariate_specs(client, job, seg_key):
-            s_ts, s_vals = covariate_series(
-                client, spec.mart, spec.metric, spec.segment,
-                job.context_length + spec.lag,
-            )
-            arr = build_covariate_array(ts, s_ts, s_vals, spec.lag, job.horizon, step, policy)
-            if arr is not None:
-                covs[f"{spec.segment}:{spec.metric}@lag{spec.lag}"] = arr
-        # без ковариат -> вызов без covariates -> обычный прогноз (дефолт, без изменений);
-        # это сохраняет совместимость с форкастерами, чей forecast() не знает про ковариаты.
-        if covs:
-            used_covariates = True
-            fc = forecaster.forecast(vals, job.horizon, covariates=covs)
-        else:
-            fc = forecaster.forecast(vals, job.horizon)
-        now = datetime.now(UTC)
-        # будущая метка времени = последняя фактическая + шаг * номер горизонта
-        for row in fc:
-            points.append([
-                run_id, job.metric, seg_key,
-                last_ts + step * row["horizon_step"],
-                row["horizon_step"], row["y_hat"],
-                row["p10"], row["p50"], row["p90"],
-                None, job.model, now,
-            ])
+    # Весь цикл прогнозирования под try: при сбое форкастера (напр. TimesFM-воркер
+    # недоступен) пишем forecast_run со status='failed' (прогон становится виден в
+    # контракте, есть аудит) и поднимаем понятную ошибку — без тихого фолбека.
+    try:
+        for dims in segments:
+            ts, vals = _series(client, job, dims)
+            if not vals:
+                continue
+            seg_key = _segment_key(dims)
+            last_ts = ts[-1]
+            # --- ковариаты: ряд лидера из long-mart, выровненный на контекст+горизонт ---
+            # лидер берётся из long-mart (metric_name+segment_key), независимо от job.source
+            # (это широкая per-metric витрина цели). Тянем context_length+lag точек, чтобы
+            # сдвиг (t - lag) был покрыт; value-binding параметризован, mart — через identifier.
+            covs: dict[str, list[float]] = {}
+            for spec in resolve_covariate_specs(client, job, seg_key):
+                s_ts, s_vals = covariate_series(
+                    client, spec.mart, spec.metric, spec.segment,
+                    job.context_length + spec.lag,
+                )
+                arr = build_covariate_array(ts, s_ts, s_vals, spec.lag, job.horizon, step, policy)
+                if arr is not None:
+                    covs[f"{spec.segment}:{spec.metric}@lag{spec.lag}"] = arr
+            # без ковариат -> вызов без covariates -> обычный прогноз (дефолт, без изменений);
+            # это сохраняет совместимость с форкастерами, чей forecast() не знает про ковариаты.
+            if covs:
+                used_covariates = True
+                fc = forecaster.forecast(vals, job.horizon, covariates=covs)
+            else:
+                fc = forecaster.forecast(vals, job.horizon)
+            now = datetime.now(UTC)
+            # будущая метка времени = последняя фактическая + шаг * номер горизонта
+            for row in fc:
+                points.append([
+                    run_id, job.metric, seg_key,
+                    last_ts + step * row["horizon_step"],
+                    row["horizon_step"], row["y_hat"],
+                    row["p10"], row["p50"], row["p90"],
+                    None, job.model, now,
+                ])
+    except ValueError:
+        # input/identifier validation (напр. небезопасный source) — fail fast,
+        # это не "сбойный прогон", а отвергнутый job; не пишем forecast_run.
+        raise
+    except Exception as e:
+        client.insert(
+            "forecast_run",
+            [[run_id, job.metric, "failed", job.model, "v0",
+              started, datetime.now(UTC), len(segments), len(segments), str(e)]],
+            column_names=[
+                "forecast_run_id", "forecast_job", "status", "model_name", "model_version",
+                "started_at", "finished_at", "segments_total", "segments_skipped", "error",
+            ],
+        )
+        raise RuntimeError(f"forecast run {run_id} failed (model={job.model}): {e}") from e
 
     # --- запись прогноза в forecast_point ---
     if points:
