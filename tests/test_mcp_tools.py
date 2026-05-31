@@ -62,16 +62,16 @@ def test_classify_levels_vs_band_no_forecast(ch):
     assert out == [{"level": 100.0, "verdict": "no_forecast"}]
 
 
-def test_get_divergence_positions(ch):
+def test_get_band_position_positions(ch):
     _seed_points(ch, "run-A")  # nearest horizon (step 1): p10=90, p90=110
-    assert mcp_tools.get_divergence(ch, "close", "symbol=BTC", 85.0)["position"] == "below_p10"
-    assert mcp_tools.get_divergence(ch, "close", "symbol=BTC", 100.0)["position"] == "in_band"
-    assert mcp_tools.get_divergence(ch, "close", "symbol=BTC", 120.0)["position"] == "above_p90"
-    assert mcp_tools.get_divergence(ch, "close", "symbol=BTC", 100.0)["in_band"] is True
+    assert mcp_tools.get_band_position(ch, "close", "symbol=BTC", 85.0)["position"] == "below_p10"
+    assert mcp_tools.get_band_position(ch, "close", "symbol=BTC", 100.0)["position"] == "in_band"
+    assert mcp_tools.get_band_position(ch, "close", "symbol=BTC", 120.0)["position"] == "above_p90"
+    assert mcp_tools.get_band_position(ch, "close", "symbol=BTC", 100.0)["in_band"] is True
 
 
-def test_get_divergence_no_forecast(ch):
-    d = mcp_tools.get_divergence(ch, "close", "symbol=NOPE", 100.0)
+def test_get_band_position_no_forecast(ch):
+    d = mcp_tools.get_band_position(ch, "close", "symbol=NOPE", 100.0)
     assert d["position"] == "no_forecast" and d["in_band"] is None
 
 

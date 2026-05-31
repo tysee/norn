@@ -84,7 +84,7 @@ datapoints (формат ingestion — выбор инстанса; крипто
 
 **MCP-слой (агенты):** `norn mcp` поднимает FastMCP-сервер (streamable-http) с
 инструментами get_forecast / get_expected_range / classify_levels_vs_band /
-get_divergence / get_calibration / get_dependencies / get_dependency_history поверх
+get_band_position / get_calibration / get_dependencies / get_dependency_history поверх
 таблиц `forecast_point` / `forecast_segment`. «Lightdash для людей, MCP для агентов».
 `get_dependencies` (пример (крипто-инстанс): BTC↔TON) — Plan 5.
 
