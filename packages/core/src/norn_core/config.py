@@ -117,6 +117,7 @@ class ForecastSettings(_YamlSection):
     timesfm: TimesFMSettings
     calibration: CalibrationSettings
     covariates: CovariatesSettings
+    retention_months: int   # TTL for contract tables, in months; 0 = no TTL
 
 
 class AgentSettings(_YamlSection):
