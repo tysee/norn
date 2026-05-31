@@ -152,8 +152,11 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> Anal
                      run_id, a.provider, a.model, e, exc_info=True)
         decision, explained, reason = DependencyDecision(relations=[]), False, str(e)
     # --- write-back: сохранить объяснения агента в dependency_explanation ---
+    # Сегмент-ключи берём из job (канонические 'symbol=...'), а НЕ из ответа LLM:
+    # модель часто срезает префикс 'symbol=', из-за чего ключи расходятся с
+    # metric_dependency и LEFT-join в get_dependencies промахивается (E2E-контракт-баг).
     exp_rows = [
-        [run_id, job.metric, r.source_segment, r.target_segment, r.lag, r.direction,
+        [run_id, job.metric, job.source_segment, job.target_segment, r.lag, r.direction,
          1 if r.is_real else 0, r.confidence, r.explanation, r.caveats, r.change_note,
          a.model, datetime.now(UTC)]
         for r in decision.relations
