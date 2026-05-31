@@ -19,7 +19,10 @@ packages/forecast/src/norn_forecast/mcp_tools.py
 - get_calibration(client, metric, segment) -> dict — последние метрики качества
   (coverage/wape/mape/bias) из forecast_segment.
 - get_dependencies(client, target_segment, metric) -> list[dict] — lead/lag
-  зависимости на целевой сегмент: числовые методы + вердикт агента.
+  зависимости на целевой сегмент: числовые методы + вердикт агента. Якорится на
+  metric_dependency (пишется всегда); вердикт LLM подмешивается LEFT-join'ом,
+  флаг explained:bool. При деградации LLM (нет объяснения) числовые методы всё
+  равно видны, а is_real=None / explanation="".
 - get_dependency_history(client, target_segment, source_segment, metric, limit=20)
   -> list[dict] — хронология одной зависимости (улики + решение по каждому прогону).
 Внутренние помощники:
@@ -198,9 +201,9 @@ def get_calibration(client: Client, metric: str, segment: str) -> dict:
 
 
 def get_dependencies(client, target_segment: str, metric: str) -> list[dict]:
-    # --- свежайший прогон анализа зависимостей по целевому сегменту ---
+    # --- якорь на metric_dependency (пишется всегда), а не на объяснение LLM ---
     run = client.query(
-        "SELECT analysis_run_id FROM dependency_explanation "
+        "SELECT analysis_run_id FROM metric_dependency "
         "WHERE target_segment=%(t)s AND metric_name=%(m)s "
         "ORDER BY created_at DESC LIMIT 1",
         parameters={"t": target_segment, "m": metric},
@@ -208,37 +211,42 @@ def get_dependencies(client, target_segment: str, metric: str) -> list[dict]:
     if not run:
         return []
     run_id = run[0][0]
-
-    # --- вердикты агента по каждому источнику этого прогона ---
-    rels = client.query(
-        "SELECT source_segment, lag, direction, is_real, confidence, explanation, "
-        "caveats, change_note FROM dependency_explanation WHERE analysis_run_id=%(r)s",
+    sources = client.query(
+        "SELECT DISTINCT source_segment FROM metric_dependency WHERE analysis_run_id=%(r)s",
         parameters={"r": run_id},
     ).result_rows
-    # --- к каждому вердикту подмешиваем подтверждающие числовые методы ---
     out = []
-    for r in rels:
-        source = r[0]
+    for (source,) in sources:
         methods = client.query(
             "SELECT method, lag, score, p_value, direction FROM metric_dependency "
             "WHERE analysis_run_id=%(r)s AND source_segment=%(s)s",
             parameters={"r": run_id, "s": source},
         ).result_rows
-        out.append({
-            "source_segment": source,
-            "target_segment": target_segment,
-            "lag": r[1],
-            "direction": r[2],
-            "is_real": bool(r[3]),
-            "confidence": r[4],
-            "explanation": r[5],
-            "caveats": r[6],
-            "change_note": r[7],
+        exp = client.query(
+            "SELECT lag, direction, is_real, confidence, explanation, caveats, change_note "
+            "FROM dependency_explanation WHERE analysis_run_id=%(r)s AND source_segment=%(s)s LIMIT 1",
+            parameters={"r": run_id, "s": source},
+        ).result_rows
+        rec = {
+            "source_segment": source, "target_segment": target_segment,
+            "explained": bool(exp),
             "methods": [
                 {"method": m[0], "lag": m[1], "score": m[2], "p_value": m[3], "direction": m[4]}
                 for m in methods
             ],
-        })
+        }
+        if exp:
+            e = exp[0]
+            rec.update({
+                "lag": e[0], "direction": e[1], "is_real": bool(e[2]), "confidence": e[3],
+                "explanation": e[4], "caveats": e[5], "change_note": e[6],
+            })
+        else:
+            rec.update({
+                "lag": None, "direction": None, "is_real": None, "confidence": None,
+                "explanation": "", "caveats": "", "change_note": "",
+            })
+        out.append(rec)
     return out
 
 
