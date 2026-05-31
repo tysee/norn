@@ -174,3 +174,21 @@ def test_run_job_without_covariates_unchanged(ch):
     n = ch.query("SELECT count() FROM forecast_point WHERE forecast_run_id=%(r)s",
                  parameters={"r": run_id}).result_rows[0][0]
     assert n == 5  # plain baseline path, unchanged
+
+
+def test_run_job_records_failed_run_on_forecaster_error(ch):
+    start = datetime(2026, 1, 1)
+    rows = [[start + timedelta(days=d), "x", float(d % 7)] for d in range(21)]
+    _seed_mart(ch, rows)
+
+    class _BoomForecaster:
+        def forecast(self, *a, **k):
+            raise ConnectionError("[Errno 61] Connection refused")  # e.g. TimesFM worker down
+
+    job = ForecastJob(metric="value", source="test_mart", horizon=3, seasonality=7)
+    with pytest.raises(RuntimeError):
+        run_job(job, client=ch, forecaster=_BoomForecaster())
+
+    run = ch.query("SELECT status, error FROM forecast_run").result_rows
+    assert len(run) == 1
+    assert run[0][0] == "failed" and "Connection refused" in run[0][1]

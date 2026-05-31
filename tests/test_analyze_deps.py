@@ -103,3 +103,46 @@ def test_analyze_degrades_explicitly_when_llm_unavailable(ch):
     m = ch.query("SELECT count() FROM dependency_explanation WHERE analysis_run_id=%(r)s",
                  parameters={"r": res.run_id}).result_rows[0][0]
     assert m == 0
+
+
+def test_explanation_uses_canonical_segment_keys(ch):
+    # Regression for the E2E contract bug: dependency_explanation must use the job's
+    # canonical 'symbol=...' segment keys (same as metric_dependency), NOT whatever the
+    # LLM echoed back (it tends to strip the 'symbol=' prefix). Otherwise the MCP
+    # get_dependencies LEFT-join misses and explained=false despite a real verdict.
+    from norn_agent.analyze import AnalysisResult
+    from norn_agent.contract import DependencyDecision, DependencyRelation
+    from norn_forecast import mcp_tools
+
+    ch.command("TRUNCATE TABLE IF EXISTS metric_dependency")
+    ch.command("TRUNCATE TABLE IF EXISTS dependency_explanation")
+    ch.command("DROP TABLE IF EXISTS mart_metric")
+    _seed_mart(ch)
+
+    class _Ret:
+        def __init__(self, output):
+            self.output = output
+
+    class _StripAgent:  # mimics an LLM that drops the 'symbol=' prefix on the keys
+        def run_sync(self, _prompt):
+            return _Ret(DependencyDecision(relations=[DependencyRelation(
+                source_segment="BTCUSDT", target_segment="TONUSDT", metric_name="log_return",
+                lag=3, direction="source_leads", is_real=True, confidence=0.8,
+                explanation="BTC leads TON", caveats="correlation != causation", change_note="")]))
+
+    job = DependencyJob(source_segment="symbol=BTCUSDT", target_segment="symbol=TONUSDT",
+                        metric="log_return", max_lag=10)
+    res = analyze_dependencies(job, client=ch, agent=_StripAgent())
+    assert isinstance(res, AnalysisResult) and res.explained is True
+
+    keys = ch.query(
+        "SELECT DISTINCT source_segment, target_segment FROM dependency_explanation "
+        "WHERE analysis_run_id=%(r)s", parameters={"r": res.run_id},
+    ).result_rows
+    assert keys == [("symbol=BTCUSDT", "symbol=TONUSDT")]
+
+    # end-to-end: MCP now returns the verdict joined with the numeric methods
+    deps = mcp_tools.get_dependencies(ch, "symbol=TONUSDT", "log_return")
+    assert len(deps) == 1
+    assert deps[0]["explained"] is True and deps[0]["is_real"] is True
+    assert any(m["method"] == "granger" for m in deps[0]["methods"])
