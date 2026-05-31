@@ -97,3 +97,36 @@ def test_get_calibration_returns_latest(ch):
 def test_get_calibration_missing(ch):
     out = mcp_tools.get_calibration(ch, "close", "symbol=NOPE")
     assert out == {"available": False}
+
+
+def _seed_run(ch, run_id="run-A", status="success"):
+    ch.insert(
+        "forecast_run",
+        [[run_id, "job.yml", status, "timesfm-2.5", "2.5", datetime(2026, 5, 30),
+          datetime(2026, 5, 30), 1, 0, None]],
+        column_names=[
+            "forecast_run_id", "forecast_job", "status", "model_name", "model_version",
+            "started_at", "finished_at", "segments_total", "segments_skipped", "error",
+        ],
+    )
+
+
+def test_get_run_status_latest(ch):
+    _seed_run(ch, "run-A")
+    out = mcp_tools.get_run_status(ch)
+    assert out["available"] is True
+    assert out["forecast_run_id"] == "run-A" and out["status"] == "success"
+    assert out["model_name"] == "timesfm-2.5"
+
+
+def test_get_forecast_status_for_series(ch):
+    _seed_points(ch, "run-A")
+    _seed_run(ch, "run-A")
+    out = mcp_tools.get_forecast_status(ch, "close", "symbol=BTC")
+    assert out["available"] is True
+    assert out["forecast_run_id"] == "run-A" and out["status"] == "success"
+    assert out["last_created_at"] is not None and out["last_forecast_ts"] is not None
+
+
+def test_get_forecast_status_unknown_segment(ch):
+    assert mcp_tools.get_forecast_status(ch, "close", "symbol=NOPE") == {"available": False}

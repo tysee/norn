@@ -40,6 +40,52 @@ def _latest_run_id(client: Client, metric: str, segment: str) -> str | None:
     return rows[0][0] if rows else None
 
 
+def get_run_status(client) -> dict:
+    """Последний прогон прогноза целиком (forecast_run), глобально."""
+    rows = client.query(
+        "SELECT forecast_run_id, forecast_job, status, model_name, model_version, "
+        "started_at, finished_at, segments_total, segments_skipped, error "
+        "FROM forecast_run ORDER BY started_at DESC LIMIT 1"
+    ).result_rows
+    if not rows:
+        return {"available": False}
+    r = rows[0]
+    return {
+        "available": True, "forecast_run_id": r[0], "forecast_job": r[1], "status": r[2],
+        "model_name": r[3], "model_version": r[4],
+        "started_at": r[5].isoformat() if r[5] else None,
+        "finished_at": r[6].isoformat() if r[6] else None,
+        "segments_total": r[7], "segments_skipped": r[8], "error": r[9],
+    }
+
+
+def get_forecast_status(client, metric: str, segment: str) -> dict:
+    """Свежесть+статус прогноза конкретного ряда: последняя точка -> её прогон."""
+    run_id = _latest_run_id(client, metric, segment)
+    if run_id is None:
+        return {"available": False}
+    pt = client.query(
+        "SELECT max(created_at), max(forecast_ts) FROM forecast_point "
+        "WHERE forecast_run_id=%(r)s AND metric_name=%(m)s AND segment_key=%(s)s",
+        parameters={"r": run_id, "m": metric, "s": segment},
+    ).result_rows[0]
+    run = client.query(
+        "SELECT status, model_name, model_version, started_at, finished_at, error "
+        "FROM forecast_run WHERE forecast_run_id=%(r)s LIMIT 1",
+        parameters={"r": run_id},
+    ).result_rows
+    rr = run[0] if run else (None, None, None, None, None, None)
+    return {
+        "available": True, "forecast_run_id": run_id,
+        "status": rr[0], "model_name": rr[1], "model_version": rr[2],
+        "started_at": rr[3].isoformat() if rr[3] else None,
+        "finished_at": rr[4].isoformat() if rr[4] else None,
+        "error": rr[5],
+        "last_created_at": pt[0].isoformat() if pt[0] else None,
+        "last_forecast_ts": pt[1].isoformat() if pt[1] else None,
+    }
+
+
 def get_forecast(
     client: Client, metric: str, segment: str, horizon: int | None = None
 ) -> list[dict]:

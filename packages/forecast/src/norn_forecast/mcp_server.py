@@ -27,6 +27,8 @@ TOOL_NAMES = [
     "get_calibration",
     "get_dependencies",
     "get_dependency_history",
+    "get_run_status",
+    "get_forecast_status",
 ]
 
 
@@ -75,5 +77,15 @@ def build_server(client=None) -> FastMCP:
     ) -> list[dict]:
         """Chronological log of one dependency (evidence + decision per run) to compare drift over time."""
         return mcp_tools.get_dependency_history(client, target_segment, source_segment, metric, limit)
+
+    @mcp.tool()
+    def get_run_status() -> dict:
+        """Status/metadata of the latest forecast run (model, timings, segments, error)."""
+        return mcp_tools.get_run_status(client)
+
+    @mcp.tool()
+    def get_forecast_status(metric: str, segment: str) -> dict:
+        """Freshness + run status for a specific metric/segment forecast."""
+        return mcp_tools.get_forecast_status(client, metric, segment)
 
     return mcp
