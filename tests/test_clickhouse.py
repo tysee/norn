@@ -59,7 +59,7 @@ def test_get_client_builds_from_settings(monkeypatch, tmp_path):
     captured = {}
     monkeypatch.setattr(ch.clickhouse_connect, "get_client", lambda **kw: captured.update(kw) or "CLIENT")
     monkeypatch.setattr(ch, "_db_settings", lambda: DatabaseSettings(
-        host="h", port=8123, user="u", password="p", database="d", secure=False, dsn=None
+        host="h", port=8123, user="u", password="p", database="d", secure=False, manage_schema=True, dsn=None
     ))
     out = ch.get_client()
     assert out == "CLIENT"

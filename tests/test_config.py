@@ -8,7 +8,7 @@ from norn_core.config import DatabaseSettings, get_settings
 
 def _write_config(d):
     (d / "database.yml").write_text(
-        "host: chhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\n")  # password via env
+        "host: chhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\nmanage_schema: true\n")  # password via env
     (d / "forecast.yml").write_text(textwrap.dedent("""\
         defaults: {horizon: 30, context_length: 512, seasonality: 7}
         quantiles: [0.1, 0.5, 0.9]
@@ -90,9 +90,9 @@ def test_yaml_file_not_a_setting_field(tmp_path, monkeypatch):
 
     # Real config: database.yml has host=chhost; the "decoy" file does not.
     (tmp_path / "database.yml").write_text(
-        "host: chhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\n")
+        "host: chhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\nmanage_schema: true\n")
     (tmp_path / "decoy.yml").write_text(
-        "host: decoyhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\n")
+        "host: decoyhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\nmanage_schema: true\n")
 
     assert "YAML_FILE" not in DatabaseSettings().model_dump()
 
@@ -168,3 +168,12 @@ def test_missing_config_dir_raises_clear_error(tmp_path, monkeypatch):
     from norn_core.config import get_settings
     with pytest.raises(FileNotFoundError):
         get_settings(refresh=True)
+
+
+def test_manage_schema_loads_and_overrides(tmp_path, monkeypatch):
+    _write_config(tmp_path)
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    from norn_core.config import get_settings
+    assert get_settings(refresh=True).database.manage_schema is True
+    monkeypatch.setenv("NORN_DB_MANAGE_SCHEMA", "false")
+    assert get_settings(refresh=True).database.manage_schema is False

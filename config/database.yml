@@ -8,4 +8,9 @@ port: 8123        # HTTP-порт ClickHouse (нативный HTTP-интерф
 user: norn        # имя пользователя БД
 database: norn    # имя базы данных, где живёт контракт-схема
 secure: false     # использовать ли TLS-подключение (true для защищённого соединения)
+# Владение схемой контракт-таблиц:
+#   true  — norn идемпотентно создаёт свои контракт-таблицы в своей БД (zero-setup).
+#   false — norn НЕ выполняет DDL (только INSERT); заведите таблицы своим dbt/миграциями,
+#           каноническую DDL печатает `norn print-schema`. Роль БД тогда без прав CREATE.
+manage_schema: true
 # password: берётся из env NORN_DB_PASSWORD (секрет, не в YAML)

@@ -81,6 +81,7 @@ class DatabaseSettings(_YamlSection):
     user: str
     database: str
     secure: bool
+    manage_schema: bool   # true: norn creates contract tables; false: INSERT-only, DDL is external
     # секрет: ТОЛЬКО из env NORN_DB_PASSWORD (не в YAML, без дефолта)
     password: str = Field(validation_alias=AliasChoices("NORN_DB_PASSWORD", "password"))
     # единственный опциональный override (env NORN_CLICKHOUSE_URL): None = override не задан
