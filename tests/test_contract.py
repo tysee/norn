@@ -55,6 +55,19 @@ def test_forecast_job_covariate_spec():
     assert job.covariates[0].lag == 3 and job.covariates[0].segment == "symbol=BTCUSDT"
 
 
+def test_forecast_job_filter_default_and_yaml(tmp_path):
+    from norn_core.contract import ForecastJob
+    # default: empty
+    j = ForecastJob(metric="m", source="s", horizon=3)
+    assert j.filter == {}
+    # from_yaml parses a filter mapping
+    p = tmp_path / "job.yml"
+    p.write_text("metric: close\nsource: fct_close\ndimensions: [symbol]\n"
+                 "filter: {symbol: BTCUSDT}\nhorizon: 30\n")
+    j2 = ForecastJob.from_yaml(str(p))
+    assert j2.filter == {"symbol": "BTCUSDT"}
+
+
 def test_forecast_point_roundtrip():
     pt = ForecastPoint(
         forecast_run_id="run-1",

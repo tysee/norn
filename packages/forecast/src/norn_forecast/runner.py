@@ -41,8 +41,11 @@ def _segments(client: Client, job: ForecastJob) -> list[dict]:
         return [{}]
     source = _safe_identifier(job.source)
     cols = ", ".join(_safe_identifier(d) for d in job.dimensions)
+    fclause, fparams = _filter_clause(job)
+    where = f"WHERE {fclause} " if fclause else ""
     rows = client.query(
-        f"SELECT DISTINCT {cols} FROM {source} ORDER BY {cols}"
+        f"SELECT DISTINCT {cols} FROM {source} {where}ORDER BY {cols}",
+        parameters=fparams,
     ).result_rows
     return [dict(zip(job.dimensions, r)) for r in rows]
 
@@ -53,16 +56,30 @@ def _segment_key(dims: dict) -> str:
     return "|".join(f"{k}={dims[k]}" for k in dims)
 
 
+def _filter_clause(job: ForecastJob) -> tuple[str, dict]:
+    """SQL WHERE fragment + bound params for job.filter (column names safe, values bound)."""
+    parts, params = [], {}
+    for i, (col, val) in enumerate(job.filter.items()):
+        key = f"f{i}"
+        parts.append(f"{_safe_identifier(col)} = %({key})s")
+        params[key] = val
+    return " AND ".join(parts), params
+
+
 def _series(client: Client, job: ForecastJob, dims: dict) -> tuple[list[datetime], list[float]]:
     source = _safe_identifier(job.source)
     metric = _safe_identifier(job.metric)
-    where = " AND ".join(f"{_safe_identifier(k)} = %({k})s" for k in dims) or "1 = 1"
+    fclause, fparams = _filter_clause(job)
+    conds = [f"{_safe_identifier(k)} = %({k})s" for k in dims]
+    if fclause:
+        conds.append(fclause)
+    where = " AND ".join(conds) or "1 = 1"
     rows = client.query(
         f"SELECT ts, val FROM ("
         f"SELECT ts, {metric} AS val FROM {source} WHERE {where} "
         f"ORDER BY ts DESC LIMIT {job.context_length}"
         f") ORDER BY ts",
-        parameters=dims,
+        parameters={**dims, **fparams},
     ).result_rows
     ts = [r[0] for r in rows]
     vals = [float(r[1]) for r in rows]

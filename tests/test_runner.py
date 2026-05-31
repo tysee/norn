@@ -192,3 +192,45 @@ def test_run_job_records_failed_run_on_forecaster_error(ch):
     run = ch.query("SELECT status, error FROM forecast_run").result_rows
     assert len(run) == 1
     assert run[0][0] == "failed" and "Connection refused" in run[0][1]
+
+
+def test_run_job_filter_scopes_to_one_value(ch):
+    start = datetime(2026, 1, 1)
+    rows = []
+    for d in range(21):
+        ts = start + timedelta(days=d)
+        rows.append([ts, "A", float(d % 7 + 1)])
+        rows.append([ts, "B", float((d % 7 + 1) * 10)])
+    _seed_mart(ch, rows)
+    job = ForecastJob(metric="value", source="test_mart", dimensions=["region"],
+                      filter={"region": "B"}, horizon=3, seasonality=7)
+    run_id = run_job(job, client=ch)
+    segs = ch.query(
+        "SELECT DISTINCT segment_key FROM forecast_point WHERE forecast_run_id=%(r)s",
+        parameters={"r": run_id},
+    ).result_rows
+    assert segs == [("region=B",)]  # only B forecast, not A
+
+
+def test_run_job_empty_filter_unchanged(ch):
+    start = datetime(2026, 1, 1)
+    rows = []
+    for d in range(21):
+        ts = start + timedelta(days=d)
+        rows.append([ts, "A", float(d % 7 + 1)])
+        rows.append([ts, "B", float((d % 7 + 1) * 10)])
+    _seed_mart(ch, rows)
+    job = ForecastJob(metric="value", source="test_mart", dimensions=["region"],
+                      horizon=3, seasonality=7)  # no filter
+    run_id = run_job(job, client=ch)
+    segs = {r[0] for r in ch.query(
+        "SELECT DISTINCT segment_key FROM forecast_point WHERE forecast_run_id=%(r)s",
+        parameters={"r": run_id}).result_rows}
+    assert segs == {"region=A", "region=B"}  # backward-compatible: both
+
+
+def test_run_job_filter_unsafe_column_rejected(ch):
+    job = ForecastJob(metric="value", source="test_mart",
+                      filter={"bad; drop": "x"}, horizon=3, seasonality=7)
+    with pytest.raises(ValueError):
+        run_job(job, client=ch)
