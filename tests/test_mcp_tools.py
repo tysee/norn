@@ -75,10 +75,10 @@ def test_get_band_position_no_forecast(ch):
     assert d["position"] == "no_forecast" and d["in_band"] is None
 
 
-def _seed_segment(ch, run_id, metric="close", segment="symbol=BTC"):
+def _seed_segment(ch, run_id, metric="close", segment="symbol=BTC", is_sparse=0):
     ch.insert(
         "forecast_segment",
-        [[run_id, metric, segment, 21, 0, 0.05, 0.04, 0.83, -0.1, datetime(2026, 5, 30)]],
+        [[run_id, metric, segment, 21, is_sparse, 0.05, 0.04, 0.83, -0.1, datetime(2026, 5, 30)]],
         column_names=[
             "forecast_run_id", "metric_name", "segment_key", "n_points", "is_sparse",
             "wape", "mape", "coverage", "bias", "created_at",
@@ -97,3 +97,54 @@ def test_get_calibration_returns_latest(ch):
 def test_get_calibration_missing(ch):
     out = mcp_tools.get_calibration(ch, "close", "symbol=NOPE")
     assert out == {"available": False}
+
+
+def _seed_run(ch, run_id="run-A", status="success"):
+    ch.insert(
+        "forecast_run",
+        [[run_id, "job.yml", status, "timesfm-2.5", "2.5", datetime(2026, 5, 30),
+          datetime(2026, 5, 30), 1, 0, None]],
+        column_names=[
+            "forecast_run_id", "forecast_job", "status", "model_name", "model_version",
+            "started_at", "finished_at", "segments_total", "segments_skipped", "error",
+        ],
+    )
+
+
+def test_get_run_status_latest(ch):
+    _seed_run(ch, "run-A")
+    out = mcp_tools.get_run_status(ch)
+    assert out["available"] is True
+    assert out["forecast_run_id"] == "run-A" and out["status"] == "success"
+    assert out["model_name"] == "timesfm-2.5"
+
+
+def test_get_forecast_status_for_series(ch):
+    _seed_points(ch, "run-A")
+    _seed_run(ch, "run-A")
+    out = mcp_tools.get_forecast_status(ch, "close", "symbol=BTC")
+    assert out["available"] is True
+    assert out["forecast_run_id"] == "run-A" and out["status"] == "success"
+    assert out["last_created_at"] is not None and out["last_forecast_ts"] is not None
+
+
+def test_get_forecast_status_unknown_segment(ch):
+    assert mcp_tools.get_forecast_status(ch, "close", "symbol=NOPE") == {"available": False}
+
+
+def test_list_metrics_and_segments(ch):
+    _seed_points(ch, "run-A", metric="close", segment="symbol=BTC")
+    _seed_points(ch, "run-A", metric="close", segment="symbol=ETH")
+    _seed_points(ch, "run-A", metric="volume", segment="symbol=BTC")
+    metrics = mcp_tools.list_metrics(ch)
+    assert "close" in metrics and "volume" in metrics
+    segs = mcp_tools.list_segments(ch, "close")
+    assert "symbol=BTC" in segs and "symbol=ETH" in segs
+    assert "symbol=BTC" in segs and len(mcp_tools.list_segments(ch, "volume")) == 1
+
+
+def test_get_calibration_includes_is_sparse(ch):
+    _seed_segment(ch, "cal-sparse", is_sparse=1)
+    out = mcp_tools.get_calibration(ch, "close", "symbol=BTC")
+    assert out["available"] is True
+    assert out["is_sparse"] is True

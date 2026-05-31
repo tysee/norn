@@ -83,9 +83,13 @@ datapoints (формат ingestion — выбор инстанса; крипто
 отдельно, вне платформы.
 
 **MCP-слой (агенты):** `norn mcp` поднимает FastMCP-сервер (streamable-http) с
-инструментами get_forecast / get_expected_range / classify_levels_vs_band /
-get_band_position / get_calibration / get_dependencies / get_dependency_history поверх
-таблиц `forecast_point` / `forecast_segment`. «Lightdash для людей, MCP для агентов».
+MCP-инструментами (11): get_forecast / get_expected_range / classify_levels_vs_band /
+get_divergence / get_calibration (incl. is_sparse) / get_dependencies (explained-флаг +
+числовой fallback при деградации LLM) / get_dependency_history / get_run_status /
+get_forecast_status / list_metrics / list_segments поверх таблиц `forecast_point` /
+`forecast_segment` / `forecast_run` / `metric_dependency` / `dependency_explanation`.
+Discovery (list_*) и статус/свежесть (get_*_status) позволяют агенту находить ряды и
+оценивать актуальность прогноза. «Lightdash для людей, MCP для агентов».
 `get_dependencies` (пример (крипто-инстанс): BTC↔TON) — Plan 5.
 
 **Dependency-агент (`packages/agent`):** PydanticAI-агент анализа зависимостей. Методы
