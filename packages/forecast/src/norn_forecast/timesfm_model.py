@@ -9,12 +9,13 @@ packages/forecast/src/norn_forecast/timesfm_model.py
 
 Классы/методы:
 - TimesFM25Model.__init__(max_context, max_horizon, torch_compile) — загрузка и
-  компиляция TimesFM 2.5; лимиты по умолчанию берутся из конфига forecast.timesfm.
+  компиляция TimesFM 2.5; лимиты по умолчанию из env NORN_TIMESFM_MAX_CONTEXT/HORIZON
+  (воркер автономен, без norn_core.config).
 - TimesFM25Model.predict(values, horizon, quantiles,
   dynamic_numerical_covariates=None) -> list[dict] — прогноз и раскладка
   квантильных столбцов модели в p10/p50/p90 на каждый шаг горизонта. С
-  ковариатами вызывает forecast_with_covariates (xreg_mode из конфига), без —
-  обычный forecast (дефолтный путь не меняется).
+  ковариатами вызывает forecast_with_covariates (xreg_mode из env
+  NORN_TIMESFM_XREG_MODE), без — обычный forecast (дефолтный путь не меняется).
 - build_app() -> FastAPI — точка входа контейнера: create_app + реальная модель.
 """
 from __future__ import annotations
@@ -27,12 +28,15 @@ class TimesFM25Model:
         max_horizon: int | None = None,
         torch_compile: bool = False,
     ) -> None:
-        from norn_core.config import get_settings
+        import os
 
-        # --- лимиты контекста/горизонта: аргумент перекрывает конфиг ---
-        tfm = get_settings().forecast.timesfm
-        max_context = max_context if max_context is not None else tfm.max_context
-        max_horizon = max_horizon if max_horizon is not None else tfm.max_horizon
+        # --- лимиты контекста/горизонта: аргумент > env > дефолт ---
+        # Воркер автономен (контейнер) и НЕ зависит от norn_core.config: в образе нет
+        # ни norn_core, ни config-YAML. Параметры приходят аргументом или из env.
+        max_context = max_context if max_context is not None else int(
+            os.environ.get("NORN_TIMESFM_MAX_CONTEXT", "1024"))
+        max_horizon = max_horizon if max_horizon is not None else int(
+            os.environ.get("NORN_TIMESFM_MAX_HORIZON", "1024"))
 
         # --- загрузка и компиляция модели (ленивый импорт torch/timesfm) ---
         # Lazy imports: torch/timesfm only inside the worker env (never the fast suite).
@@ -67,9 +71,9 @@ class TimesFM25Model:
             # XReg-путь: лидеры передаются как динамические числовые ковариаты.
             # Version-sensitive: arg names/shape сверены с установленной TimesFM 2.5 (git);
             # при расхождении адаптируй здесь — стабильный контракт воркера в FakeModel.
-            from norn_core.config import get_settings
+            import os
 
-            mode = get_settings().forecast.covariates.xreg_mode
+            mode = os.environ.get("NORN_TIMESFM_XREG_MODE", "xreg+timesfm")
             point_forecast, quantile_forecast = self._model.forecast_with_covariates(
                 horizon=horizon,
                 inputs=[np.asarray(values, dtype=float)],
