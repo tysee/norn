@@ -58,9 +58,17 @@ class _YamlSection(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,
     ):
         # --- источник YAML: файл секции из каталога NORN_CONFIG_DIR ---
-        yaml_src = YamlConfigSettingsSource(
-            settings_cls, yaml_file=_config_dir() / cls.YAML_FILE
-        )
+        # Явный, диагностируемый отказ, если конфиг-файл не найден (напр. в
+        # контейнере/k8s, где cwd != корень репо): иначе pydantic молча игнорирует
+        # отсутствующий YAML и падает обобщённым "field required".
+        yaml_path = _config_dir() / cls.YAML_FILE
+        if not yaml_path.is_file():
+            raise FileNotFoundError(
+                f"norn config file not found: {yaml_path}. Set NORN_CONFIG_DIR to the "
+                f"directory containing {cls.YAML_FILE} (and the other section YAMLs). "
+                f"cwd={Path.cwd()}."
+            )
+        yaml_src = YamlConfigSettingsSource(settings_cls, yaml_file=yaml_path)
         # --- порядок = приоритет: init kwargs (tests) > env > yaml (без дефолтов полей) ---
         return (init_settings, env_settings, yaml_src)
 

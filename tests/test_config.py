@@ -159,3 +159,12 @@ def test_get_settings_is_cached_within_a_run(tmp_path, monkeypatch):
     first = get_settings()
     second = get_settings()
     assert first is second
+
+
+def test_missing_config_dir_raises_clear_error(tmp_path, monkeypatch):
+    # NORN_CONFIG_DIR pointing at a dir without the section YAMLs must fail LOUDLY
+    # (clear FileNotFoundError), not via an obscure "field required" ValidationError.
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path / "does-not-exist"))
+    from norn_core.config import get_settings
+    with pytest.raises(FileNotFoundError):
+        get_settings(refresh=True)
