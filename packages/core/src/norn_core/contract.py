@@ -43,6 +43,7 @@ class ForecastJob(BaseModel):
     source: str  # ClickHouse table, e.g. "analytics.mart_metric"
     grain: Grain = Grain.daily
     dimensions: list[str] = Field(default_factory=list)
+    filter: dict[str, str] = Field(default_factory=dict)  # column=value equality; scopes the source
     covariates: list[CovariateSpec] = Field(default_factory=list)
     use_dependencies: bool = False
     horizon: int | None = None
