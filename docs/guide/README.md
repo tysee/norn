@@ -1,12 +1,12 @@
 # norn — User Guide
 
-*Audience: anyone running, configuring, authoring jobs for, or integrating with a norn deployment.*
+_Audience: anyone running, configuring, authoring jobs for, or integrating with a norn deployment._
 
 norn is a vendor-neutral, domain-agnostic forecasting platform that sits on top of
 your data warehouse. It reads metric marts, produces multi-segment forecasts with
 quantile bands, discovers lead/lag dependencies between metrics, and serves all of
 this to agents and bots over MCP. The platform itself ships **no domain defaults** —
-it is generic infrastructure. A concrete *instance* plugs in the ingestion, marts,
+it is generic infrastructure. A concrete _instance_ plugs in the ingestion, marts,
 forecast jobs, and dashboards for a given domain.
 
 This guide describes the platform exactly as it exists: the CLI, the configuration
@@ -29,11 +29,11 @@ Work through the pages in this order; each builds lightly on the previous one.
 
 Different readers care about different pages. Start where you fit:
 
-| You are a… | Read |
-|---|---|
-| **Operator / Deployer** — you run norn locally or in the cloud | [Deployment](deployment.md), [Configuration](configuration.md) |
-| **Job author** — you write forecast and dependency jobs | [Jobs](jobs.md), [Configuration](configuration.md) |
-| **Agent integrator** — you consume forecasts/dependencies from a bot or agent | [MCP](mcp.md) |
+| You are a…                                                                    | Read                                                           |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Operator / Deployer** — you run norn locally or in the cloud                | [Deployment](deployment.md), [Configuration](configuration.md) |
+| **Job author** — you write forecast and dependency jobs                       | [Jobs](jobs.md), [Configuration](configuration.md)             |
+| **Agent integrator** — you consume forecasts/dependencies from a bot or agent | [MCP](mcp.md)                                                  |
 
 If you are new to norn entirely, read [Overview](overview.md) first regardless of role.
 
