@@ -73,6 +73,34 @@ def backtest_metrics(
     }
 
 
+def backtest_points(
+    ts: list, values: list[float], forecaster: Forecaster, horizon: int, n_cutoffs: int = 3
+) -> list[dict]:
+    """Per-point rolling-origin backtest: each held-out step with its real timestamp,
+    the forecast (y_hat/p10/p50/p90) and the realized y_actual. Same cutoffs as
+    backtest_metrics — lets us persist 'past forecast vs actual' pairs for charts."""
+    n = len(values)
+    out: list[dict] = []
+    for k in range(n_cutoffs, 0, -1):
+        cut = n - k * horizon
+        if cut <= 0:
+            continue
+        ctx = values[:cut]
+        truth = values[cut : cut + horizon]
+        truth_ts = ts[cut : cut + horizon]
+        if len(truth) < horizon:
+            continue
+        for row, a, t in zip(forecaster.forecast(ctx, horizon), truth, truth_ts):
+            # tag naive-UTC reads so the insert keeps the true instant (see runner).
+            ft = t if getattr(t, "tzinfo", None) else t.replace(tzinfo=UTC)
+            out.append({
+                "forecast_ts": ft, "horizon_step": row["horizon_step"],
+                "y_hat": row["y_hat"], "p10": row["p10"], "p50": row["p50"],
+                "p90": row["p90"], "y_actual": a,
+            })
+    return out
+
+
 def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = None) -> str:
     job = job.resolved()
     from norn_core.config import get_settings
@@ -82,27 +110,47 @@ def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | Non
     forecaster = forecaster or make_forecaster(job)
     run_id = str(uuid.uuid4())
 
-    # --- посегментная калибровка: ряд из ClickHouse -> метрики -> строка вставки ---
+    # --- посегментная калибровка: ряд из ClickHouse -> метрики (+ по-точечные пары) ---
     rows: list[list] = []
+    points: list[list] = []
+    now = datetime.now(UTC)
+    bt_model = f"{job.model} (backtest)"  # tag so the live-forecast view ignores these
     for dims in _segments(client, job):
-        _ts, vals = _series(client, job, dims)
+        seg_ts, vals = _series(client, job, dims)
         if not vals:
             continue
+        seg_key = _segment_key(dims)
         m = backtest_metrics(vals, forecaster, job.horizon, n_cutoffs=n_cutoffs)
         rows.append([
-            run_id, job.metric, _segment_key(dims),
+            run_id, job.metric, seg_key,
             m["n_points"], 1 if m["n_points"] == 0 else 0,
             m["wape"], m["mape"], m["coverage"], m["bias"],
-            datetime.now(UTC),
+            now,
         ])
+        # persist the realized (actual, forecast) pairs for "past forecast vs actual"
+        for pt in backtest_points(seg_ts, vals, forecaster, job.horizon, n_cutoffs=n_cutoffs):
+            points.append([
+                run_id, job.metric, seg_key, pt["forecast_ts"], pt["horizon_step"],
+                pt["y_hat"], pt["p10"], pt["p50"], pt["p90"], pt["y_actual"],
+                bt_model, now,
+            ])
 
-    # --- пакетная запись метрик в контракт-таблицу forecast_segment ---
+    # --- запись метрик в forecast_segment + по-точечного бэктеста в forecast_point ---
     if rows:
         client.insert(
             "forecast_segment", rows,
             column_names=[
                 "forecast_run_id", "metric_name", "segment_key", "n_points",
                 "is_sparse", "wape", "mape", "coverage", "bias", "created_at",
+            ],
+        )
+    if points:
+        client.insert(
+            "forecast_point", points,
+            column_names=[
+                "forecast_run_id", "metric_name", "segment_key", "forecast_ts",
+                "horizon_step", "y_hat", "p10", "p50", "p90", "y_actual",
+                "model_name", "created_at",
             ],
         )
     return run_id
