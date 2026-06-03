@@ -145,6 +145,33 @@ def test_run_job_uses_recent_context(ch):
     assert max_y_hat >= 50.0
 
 
+def test_run_job_forecast_ts_has_no_timezone_skew(ch):
+    # Regression: forecast_ts must continue EXACTLY one step (to the second) after
+    # the last source bar. clickhouse-connect localizes naive datetimes on INSERT,
+    # so a naive forecast_ts is shifted by the machine's UTC offset; the runner tags
+    # last_ts as UTC to prevent that. The gap is computed ClickHouse-side so the
+    # assertion itself is timezone-stable (it would read 75600s on a UTC+3 box before
+    # the fix, 86400s after).
+    start = datetime(2026, 1, 1)
+    rows = [[start + timedelta(days=d), "eu", float(d % 7 + 1)] for d in range(28)]
+    _seed_mart(ch, rows)
+
+    job = ForecastJob(
+        metric="value", source="test_mart", dimensions=["region"],
+        horizon=3, seasonality=7,
+    )
+    run_id = run_job(job, client=ch)
+
+    gap = ch.query(
+        "SELECT dateDiff('second', "
+        "  (SELECT max(ts) FROM test_mart WHERE region = 'eu'), "
+        "  min(forecast_ts)) "
+        "FROM forecast_point WHERE forecast_run_id = %(r)s",
+        parameters={"r": run_id},
+    ).result_rows[0][0]
+    assert gap == 86400  # exactly +1 day, no UTC-offset skew
+
+
 def test_run_job_resolves_defaults_from_config(ch, monkeypatch):
     from datetime import datetime, timedelta
 

@@ -109,6 +109,12 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
                 continue
             seg_key = _segment_key(dims)
             last_ts = ts[-1]
+            # ClickHouse DateTime comes back naive-UTC; tag it UTC so the insert
+            # stores the true instant. Otherwise clickhouse-connect treats the naive
+            # forecast_ts as LOCAL time and shifts it by the machine's UTC offset,
+            # breaking the exact-ts join from forecast to realized actuals.
+            if last_ts.tzinfo is None:
+                last_ts = last_ts.replace(tzinfo=UTC)
             # --- ковариаты: ряд лидера из long-mart, выровненный на контекст+горизонт ---
             # лидер берётся из long-mart (metric_name+segment_key), независимо от job.source
             # (это широкая per-metric витрина цели). Тянем context_length+lag точек, чтобы
