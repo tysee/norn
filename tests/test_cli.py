@@ -1,6 +1,7 @@
 from typer.testing import CliRunner
 
 import norn_cli.main as cli_main
+from conftest import DSN
 from norn_cli.main import app
 
 runner = CliRunner()
@@ -43,7 +44,7 @@ def test_forecast_command_runs_and_prints_run_id(ch, tmp_path, monkeypatch):
         [[start + timedelta(days=d), "eu", float(d % 7)] for d in range(21)],
         column_names=["ts", "region", "value"],
     )
-    monkeypatch.setenv("NORN_CLICKHOUSE_URL", "http://norn:norn@localhost:8123/norn")
+    monkeypatch.setenv("NORN_CLICKHOUSE_URL", DSN)  # same DB as the ch fixture, never a hardcoded live DB
 
     job = tmp_path / "job.yml"
     job.write_text(
@@ -55,7 +56,7 @@ def test_forecast_command_runs_and_prints_run_id(ch, tmp_path, monkeypatch):
 
 
 def test_schema_apply_command(ch, monkeypatch):
-    monkeypatch.setenv("NORN_CLICKHOUSE_URL", "http://norn:norn@localhost:8123/norn")
+    monkeypatch.setenv("NORN_CLICKHOUSE_URL", DSN)  # same DB as the ch fixture, never a hardcoded live DB
     result = runner.invoke(app, ["schema-apply"])
     assert result.exit_code == 0, result.output
     assert "schema applied" in result.output.lower()
@@ -120,7 +121,7 @@ def test_forecast_threads_retention_into_prepare(ch, tmp_path, monkeypatch):
         [[start + timedelta(days=d), "eu", float(d % 7)] for d in range(21)],
         column_names=["ts", "region", "value"],
     )
-    monkeypatch.setenv("NORN_CLICKHOUSE_URL", "http://norn:norn@localhost:8123/norn")
+    monkeypatch.setenv("NORN_CLICKHOUSE_URL", DSN)  # same DB as the ch fixture, never a hardcoded live DB
     seen: dict = {}
     monkeypatch.setattr(
         cli_main, "prepare_schema",

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from typer.testing import CliRunner
 
+from conftest import DSN
 from norn_cli.main import app
 
 runner = CliRunner()
@@ -18,7 +19,7 @@ def test_calibrate_command(ch, tmp_path, monkeypatch):
         [[start + timedelta(days=d), "eu", float(d % 7)] for d in range(56)],
         column_names=["ts", "region", "value"],
     )
-    monkeypatch.setenv("NORN_CLICKHOUSE_URL", "http://norn:norn@localhost:8123/norn")
+    monkeypatch.setenv("NORN_CLICKHOUSE_URL", DSN)  # same DB as the ch fixture, never a hardcoded live DB
     job = tmp_path / "job.yml"
     job.write_text("metric: value\nsource: test_mart\ndimensions: [region]\nhorizon: 7\n")
     result = runner.invoke(app, ["calibrate", str(job)])

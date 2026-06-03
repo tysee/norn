@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from typer.testing import CliRunner
 
+from conftest import DSN
 from norn_cli.main import app
 
 runner = CliRunner()
@@ -37,10 +38,12 @@ def test_deps_command(ch, tmp_path, monkeypatch):
         lambda model=None: Agent(TestModel(), output_type=DependencyDecision,
                                  system_prompt=agentmod.SYSTEM_PROMPT),
     )
-    monkeypatch.setenv("NORN_CLICKHOUSE_URL", "http://norn:norn@localhost:8123/norn")
+    monkeypatch.setenv("NORN_CLICKHOUSE_URL", DSN)  # same DB as the ch fixture, never a hardcoded live DB
 
     job = tmp_path / "deps.yml"
     job.write_text("source_segment: symbol=BTCUSDT\ntarget_segment: symbol=TONUSDT\nmetric: log_return\nmax_lag: 10\n")
     result = runner.invoke(app, ["deps", str(job)])
     assert result.exit_code == 0, result.output
     assert "deps run_id=" in result.output
+    # Progress header so a multi-minute LLM judge doesn't look like a hang.
+    assert "symbol=BTCUSDT -> symbol=TONUSDT" in result.output
