@@ -3,5 +3,13 @@ uvicorn>=0.29
 numpy>=1.26
 torch>=2.2
 # TimesFM 2.5 is not published to PyPI yet — install from the upstream repo.
+# forecast_with_covariates (timesfm/utils/xreg_lib.py) only needs an importable
+# jax + scikit-learn. We deliberately do NOT use the upstream [xreg] extra: it
+# pins jax[cuda], which on this CPU-only arm64 docker drags in jax-cuda12-plugin
+# [with-cuda] + a multi-GB cascade of nvidia-*-cu12 CUDA wheels (no GPU here, so
+# the CUDA backend is useless and the heavy install is fragile). Install plain
+# timesfm and add CPU jax + scikit-learn explicitly instead.
 timesfm @ git+https://github.com/google-research/timesfm.git
+jax>=0.4
+scikit-learn
 pydantic>=2.6
