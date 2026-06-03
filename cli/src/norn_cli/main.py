@@ -121,6 +121,16 @@ def deps(
     client = get_client()
     try:
         s = get_settings()
+        # Прогресс: судья-LLM работает минуты (локальная Ollama) — без этих строк
+        # прогон выглядит зависшим. basicConfig поднимает INFO-вехи analyze в stderr
+        # (no-op, если логирование уже настроено хостом).
+        import logging
+
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+        typer.echo(
+            f"deps: {job.source_segment} -> {job.target_segment} metric={job.metric} "
+            f"(LLM judge: {s.agent.provider}/{s.agent.model})"
+        )
         prepare_schema(client, s.database.manage_schema, s.forecast.retention_months)
         # --- считаем зависимости, пишем evidence и печатаем run_id ---
         res = analyze_dependencies(job, client=client)
@@ -138,9 +148,28 @@ def deps(
 @app.command()
 def mcp() -> None:
     """Run the MCP server (streamable-http) so agents can query forecasts."""
+    from pydantic import ValidationError
+
     from norn_forecast.mcp_server import build_server
 
-    build_server().run(transport="streamable-http")
+    # Конфиг-ошибки (нет NORN_DB_PASSWORD и т.п.) — это операторская проблема,
+    # а не баг: печатаем, какие env/поля не заданы, вместо сырого traceback.
+    try:
+        server = build_server()
+    except ValidationError as e:
+        missing = ", ".join(
+            str(err["loc"][0]) for err in e.errors() if err["type"] == "missing"
+        ) or str(e)
+        typer.secho(
+            f"config error: missing required settings: {missing}. "
+            "Secrets come from env (e.g. NORN_DB_PASSWORD for the ClickHouse password); "
+            "see config/*.yml for the non-secret fields.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(1) from e
+    s = get_settings().mcp
+    typer.echo(f"norn MCP server on http://{s.host}:{s.port}/mcp (streamable-http)")
+    server.run(transport="streamable-http")
 
 
 @app.command()
