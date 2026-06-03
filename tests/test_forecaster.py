@@ -6,9 +6,44 @@ from norn_core.contract import ForecastJob
 from norn_forecast.baseline import seasonal_naive_forecast
 from norn_forecast.forecaster import (
     BaselineForecaster,
+    LogTransformForecaster,
     TimesFMForecaster,
     make_forecaster,
 )
+
+
+class _EchoMean:
+    """Base forecaster returning the arithmetic mean of its inputs as y_hat/p50 and
+    mean±1 as the band — lets us assert the log/exp round-trip exactly."""
+
+    def forecast(self, values, horizon, covariates=None):
+        m = sum(values) / len(values)
+        return [
+            {"horizon_step": h, "y_hat": m, "p10": m - 1, "p50": m, "p90": m + 1}
+            for h in range(1, horizon + 1)
+        ]
+
+
+def test_log_transform_forecaster_logs_in_exps_out():
+    import math
+
+    values = [math.e**k for k in range(1, 5)]  # log -> [1,2,3,4], mean 2.5
+    rows = LogTransformForecaster(_EchoMean()).forecast(values, horizon=2)
+    assert rows[0]["y_hat"] == math.exp(2.5)
+    assert rows[0]["p10"] == math.exp(1.5)
+    assert rows[0]["p90"] == math.exp(3.5)
+
+
+def test_log_transform_forecaster_falls_back_on_nonpositive():
+    # A non-positive value can't be log'd -> pass through the base forecaster as-is.
+    rows = LogTransformForecaster(_EchoMean()).forecast([1.0, -2.0, 3.0], horizon=1)
+    assert rows[0]["y_hat"] == (1.0 - 2.0 + 3.0) / 3  # raw mean, not exp'd
+
+
+def test_make_forecaster_wraps_in_log_when_requested():
+    job = ForecastJob(metric="v", source="t", model="timesfm-2.5", transform="log")
+    f = make_forecaster(job, timesfm_url="http://worker:9100")
+    assert isinstance(f, LogTransformForecaster)
 
 
 def test_baseline_forecaster_matches_function():

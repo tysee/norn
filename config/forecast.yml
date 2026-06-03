@@ -20,7 +20,7 @@ timesfm:
 
 # Параметры rolling-origin калибровки.
 calibration:
-  n_cutoffs: 3   # число точек отсечения (origin'ов) для оценки качества прогноза
+  n_cutoffs: 8   # число origin'ов для rolling-origin; >=8 для устойчивой оценки (3 давало шумные метрики)
 
 # ковариаты (XReg): horizon_policy strict (lag>=horizon) | ffill (продлить лидера); режим XReg
 covariates:

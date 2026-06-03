@@ -34,4 +34,10 @@ def test_calibrate_job_writes_segment_rows(ch):
         "WHERE forecast_run_id=%(r)s",
         parameters={"r": run_id},
     ).result_rows
-    assert rows == [("region=eu", 1.0, 0.0, 21)]
+    # clean weekly series -> seasonal-naive is perfect: coverage 1.0, wape 0.0.
+    # n_points = (valid cutoffs) * horizon; cutoffs are capped by series length
+    # (56 days, horizon 7 -> at most 7 origins), so it tracks the config n_cutoffs.
+    from norn_core.config import get_settings
+
+    expected_pts = min(get_settings().forecast.calibration.n_cutoffs, 7) * 7
+    assert rows == [("region=eu", 1.0, 0.0, expected_pts)]

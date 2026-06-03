@@ -50,6 +50,7 @@ class ForecastJob(BaseModel):
     context_length: int | None = None
     seasonality: int | None = None
     model: str = "baseline-seasonal-naive"
+    transform: str = "none"  # "none" | "log": forecast in log-space (positive multiplicative series)
     schedule: str | None = None
 
     @classmethod
