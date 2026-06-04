@@ -16,6 +16,7 @@ cli/src/norn_cli/main.py
 - calibrate — rolling-origin калибровка (coverage/wape/mape/bias).
 - deps — анализ lead/lag зависимостей + объяснение агента.
 - mcp — поднять MCP-сервер (streamable-http) для запросов агентов.
+- scheduler — встроенный шедулер (cron-джобы + HTTP-API) из jobs.yml.
 - up — поднять локальный сайдкар (ClickHouse) в Docker.
 """
 from __future__ import annotations
@@ -170,6 +171,25 @@ def mcp() -> None:
     s = get_settings().mcp
     typer.echo(f"norn MCP server on http://{s.host}:{s.port}/mcp (streamable-http)")
     server.run(transport="streamable-http")
+
+
+@app.command()
+def scheduler(
+    manifest: Annotated[str, typer.Option(help="path to a jobs.yml manifest")],
+) -> None:
+    """Run the built-in scheduler service (cron jobs + HTTP API)."""
+    from pydantic import ValidationError
+
+    import norn_scheduler.service as svc
+    from norn_scheduler.manifest import SchedulerManifest
+
+    # fail-fast: невалидный манифест — операторская ошибка, печатаем поле и причину
+    try:
+        SchedulerManifest.from_yaml(manifest)
+    except (ValidationError, ValueError, OSError) as e:
+        typer.secho(f"invalid manifest {manifest}: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from e
+    svc.serve(manifest)
 
 
 @app.command()

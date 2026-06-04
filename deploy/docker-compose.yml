@@ -138,6 +138,63 @@ services:
     volumes:
       - hf-cache:/root/.cache/huggingface
 
+  # Built-in scheduler: cron for norn jobs (forecast/calibrate/deps) + HTTP :9300.
+  # Single replica by design. Instance job YAMLs + jobs.yml are mounted at /jobs:
+  #   NORN_JOBS_DIR=../instances/ett docker compose --profile scheduler up -d scheduler
+  scheduler:
+    build:
+      context: ..
+      dockerfile: deploy/norn.Dockerfile
+    image: norn:local
+    container_name: norn-scheduler
+    profiles: ["scheduler"]
+    command: ["scheduler", "--manifest", "/jobs/deploy/jobs.yml"]
+    ports:
+      - "127.0.0.1:9300:9300"
+    environment:
+      NORN_SCHEDULER_HOST: 0.0.0.0
+      NORN_DB_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
+      NORN_CLICKHOUSE_URL: ${NORN_CLICKHOUSE_URL:-http://norn:${CLICKHOUSE_PASSWORD:-norn}@clickhouse:8123/norn}
+      NORN_FORECAST_TIMESFM__WORKER_URL: http://timesfm:9100
+      NORN_AGENT_WORKER_URL: ${NORN_AGENT_WORKER_URL:-http://agent:9400}
+    volumes:
+      - ${NORN_JOBS_DIR:-./jobs}:/jobs:ro
+    depends_on:
+      - clickhouse
+
+  # Read-only MCP server for agents (:9200). Same image as the scheduler.
+  mcp:
+    image: norn:local
+    container_name: norn-mcp
+    profiles: ["mcp"]
+    command: ["mcp"]
+    ports:
+      - "127.0.0.1:9200:9200"
+    environment:
+      NORN_MCP_HOST: 0.0.0.0
+      NORN_DB_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
+      NORN_CLICKHOUSE_URL: ${NORN_CLICKHOUSE_URL:-http://norn:${CLICKHOUSE_PASSWORD:-norn}@clickhouse:8123/norn}
+    depends_on:
+      - clickhouse
+
+  # Switchable LLM judge. Off (profile not started) => deps jobs write evidence
+  # with explained=false. Ollama on the host is reachable via host.docker.internal.
+  agent:
+    build:
+      context: ..
+      dockerfile: deploy/agent.Dockerfile
+    image: norn-agent:local
+    container_name: norn-agent
+    profiles: ["agent"]
+    ports:
+      - "127.0.0.1:9400:9400"
+    environment:
+      # build_agent() eagerly loads norn settings at startup (DatabaseSettings
+      # requires NORN_DB_PASSWORD), so the worker needs it even though it does
+      # not touch ClickHouse itself.
+      NORN_DB_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
+      NORN_AGENT_BASE_URL: ${NORN_AGENT_BASE_URL:-http://host.docker.internal:11434/v1}
+
 volumes:
   clickhouse-data: {}
   lightdash-db-data: {}

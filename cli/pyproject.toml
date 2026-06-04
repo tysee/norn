@@ -2,7 +2,7 @@
 name = "norn-cli"
 version = "0.0.0"
 requires-python = ">=3.12"
-dependencies = ["norn-core", "norn-integration", "norn-forecast", "norn-agent", "typer>=0.12"]
+dependencies = ["norn-core", "norn-integration", "norn-forecast", "norn-agent", "norn-scheduler", "typer>=0.12"]
 
 [project.scripts]
 norn = "norn_cli.main:app"

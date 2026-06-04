@@ -147,3 +147,23 @@ def test_up_missing_compose_file(monkeypatch, tmp_path):
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run docker")))
     result = runner.invoke(app, ["up"])
     assert result.exit_code == 1
+
+
+def test_scheduler_command_fails_fast_on_bad_manifest(tmp_path):
+    bad = tmp_path / "jobs.yml"
+    bad.write_text("jobs:\n  - name: x\n    action: ingest\n    job: j.yml\n    schedule: '0 6 * * *'\n")
+    result = runner.invoke(app, ["scheduler", "--manifest", str(bad)])
+    assert result.exit_code == 1
+    out = result.output + str(result.exception or "")
+    assert "action" in out  # validation names the offending field
+
+
+def test_scheduler_command_serves(monkeypatch, tmp_path):
+    good = tmp_path / "jobs.yml"
+    good.write_text("jobs:\n  - name: x\n    action: forecast\n    job: j.yml\n    schedule: '0 6 * * *'\n")
+    seen = {}
+    import norn_scheduler.service as svc
+    monkeypatch.setattr(svc, "serve", lambda p: seen.setdefault("path", p))
+    result = runner.invoke(app, ["scheduler", "--manifest", str(good)])
+    assert result.exit_code == 0, result.output
+    assert seen["path"] == str(good)

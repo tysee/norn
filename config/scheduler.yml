@@ -1,0 +1,7 @@
+# config/scheduler.yml
+# Параметры встроенного шедулера norn: адрес HTTP-API и политика ретраев джоб.
+host: 127.0.0.1            # интерфейс HTTP-API шедулера (в контейнере переопределяется env NORN_SCHEDULER_HOST=0.0.0.0)
+port: 9300                 # TCP-порт HTTP-API (/health, /jobs, trigger)
+retries: 2                 # ретраи упавшей джобы (поверх 1-й попытки); манифест может переопределить per-job
+retry_base_seconds: 30     # база экспоненциальной паузы между ретраями: base * 2^attempt
+misfire_grace_seconds: 3600  # пропущенный из-за рестарта тик догоняется один раз в этом окне
