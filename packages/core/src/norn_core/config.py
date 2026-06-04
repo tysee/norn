@@ -18,6 +18,7 @@ YAML-native типизированный config-слой платформы norn
 - ForecastSettings — секция прогноза (дефолты, квантили, параметры TimesFM, калибровка).
 - AgentSettings — секция агента (модель, лаги, методы анализа зависимостей).
 - McpSettings — секция MCP-сервера (host/port).
+- SchedulerSettings — секция встроенного шедулера (host/port + политика ретраев/misfire).
 - Settings — агрегат всех секций.
 - get_settings(refresh=False) -> Settings — кэшированные настройки (читает NORN_CONFIG_DIR; refresh сбрасывает кэш).
 """
@@ -132,6 +133,8 @@ class AgentSettings(_YamlSection):
     methods: list[str]
     granger_min_points_factor: int
     granger_significance: float
+    # null = LLM judge runs in-process (current behavior); URL = call the agent-worker
+    worker_url: str | None = None
 
 
 class McpSettings(_YamlSection):
@@ -141,11 +144,22 @@ class McpSettings(_YamlSection):
     port: int
 
 
+class SchedulerSettings(_YamlSection):
+    model_config = SettingsConfigDict(env_prefix="NORN_SCHEDULER_", env_nested_delimiter="__", extra="ignore")
+    YAML_FILE: ClassVar[str] = "scheduler.yml"
+    host: str
+    port: int
+    retries: int                  # default retry attempts per job (manifest may override)
+    retry_base_seconds: int       # exponential backoff base: base * 2**attempt
+    misfire_grace_seconds: int    # how late a missed cron tick may still fire once
+
+
 class Settings(BaseModel):
     database: DatabaseSettings
     forecast: ForecastSettings
     agent: AgentSettings
     mcp: McpSettings
+    scheduler: SchedulerSettings
 
 
 @functools.lru_cache(maxsize=1)
@@ -156,6 +170,7 @@ def _cached() -> Settings:
         forecast=ForecastSettings(),
         agent=AgentSettings(),
         mcp=McpSettings(),
+        scheduler=SchedulerSettings(),
     )
 
 

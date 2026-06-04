@@ -27,8 +27,11 @@ def _write_config(d):
         methods: [lagged_cross_correlation, granger]
         granger_min_points_factor: 3
         granger_significance: 0.05
+        worker_url: null
     """))
     (d / "mcp.yml").write_text("host: 127.0.0.1\nport: 9200\n")
+    (d / "scheduler.yml").write_text(
+        "host: 127.0.0.1\nport: 9300\nretries: 2\nretry_base_seconds: 30\nmisfire_grace_seconds: 3600\n")
 
 
 def test_settings_load_from_yaml(tmp_path, monkeypatch):
@@ -186,3 +189,24 @@ def test_manage_schema_loads_and_overrides(tmp_path, monkeypatch):
     assert get_settings(refresh=True).database.manage_schema is True
     monkeypatch.setenv("NORN_DB_MANAGE_SCHEMA", "false")
     assert get_settings(refresh=True).database.manage_schema is False
+
+
+def test_scheduler_section_loads(tmp_path, monkeypatch):
+    _write_config(tmp_path)
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("NORN_DB_PASSWORD", "x")
+    s = get_settings(refresh=True)
+    assert s.scheduler.port == 9300
+    assert s.scheduler.retries == 2
+    assert s.agent.worker_url is None
+
+
+def test_scheduler_env_overrides(tmp_path, monkeypatch):
+    _write_config(tmp_path)
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("NORN_DB_PASSWORD", "x")
+    monkeypatch.setenv("NORN_SCHEDULER_PORT", "9999")
+    monkeypatch.setenv("NORN_AGENT_WORKER_URL", "http://agent:9400")
+    s = get_settings(refresh=True)
+    assert s.scheduler.port == 9999
+    assert s.agent.worker_url == "http://agent:9400"
