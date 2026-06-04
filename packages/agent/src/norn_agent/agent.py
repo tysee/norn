@@ -14,7 +14,8 @@ LLM-уровень слоя зависимостей: PydanticAI-агент пр
   -> DependencyDecision — формирует промпт из текущих (и опционально прошлых)
   улик и возвращает решение агента по каждой зависимости. При известном
   инфраструктурном сбое (нет креденшела/неверный конфиг/ошибка модели или
-  транспорта) поднимает LLMUnavailable — без тихой деградации.
+  транспорта) поднимает LLMUnavailable — без тихой деградации. Может ходить в
+  agent-воркер (`agent.worker_url`); сбой воркера == LLMUnavailable.
 """
 from __future__ import annotations
 
@@ -120,12 +121,41 @@ def build_agent(model=None) -> Agent:
     )
 
 
+def _judge_via_worker(url, measurements, meta, prior_measurements) -> DependencyDecision:
+    """POST /judge на agent-воркер. Любой сбой -> LLMUnavailable (явная деградация)."""
+    import httpx
+
+    body = {
+        "measurements": [m.model_dump() for m in measurements],
+        "meta": meta,
+        "prior_measurements": [m.model_dump() for m in (prior_measurements or [])],
+    }
+    try:
+        resp = httpx.post(f"{url.rstrip('/')}/judge", json=body, timeout=600.0)
+    except httpx.HTTPError as e:
+        raise LLMUnavailable(f"agent worker unreachable: {type(e).__name__}: {e}") from e
+    if resp.status_code != 200:
+        raise LLMUnavailable(f"agent worker error {resp.status_code}: {resp.text[:200]}")
+    try:
+        return DependencyDecision.model_validate(resp.json())
+    except ValueError as e:
+        raise LLMUnavailable(f"agent worker returned invalid decision: {e}") from e
+
+
 def judge_dependencies(
     measurements: list[DependencyMeasurement],
     meta: dict,
     prior_measurements: list[DependencyMeasurement] | None = None,
     agent: Agent | None = None,
 ) -> DependencyDecision:
+    # --- режим agent-воркера: судья за HTTP-границей (включается agent.worker_url) ---
+    # Явно переданный agent (тесты, локальные прогоны) главнее worker_url.
+    if agent is None:
+        from norn_core.config import get_settings
+
+        worker_url = get_settings().agent.worker_url
+        if worker_url:
+            return _judge_via_worker(worker_url, measurements, meta, prior_measurements)
     # --- сборка модели/агента и вызов — всё под try ---
     # Узко перехватываем только известные инфраструктурные сбои (нет креденшела,
     # неверный конфиг, ошибка модели/транспорта) и ре-райзим типизированно

@@ -162,3 +162,87 @@ def test_output_type_from_mode():
     import pytest
     with pytest.raises(ValueError):
         _output_type(cfg("bogus"))
+
+
+def _measurement():
+    from norn_agent.contract import DependencyMeasurement
+
+    return DependencyMeasurement(method="granger", lag=3, score=0.9,
+                                 direction="source_leads", p_value=0.01, confidence=0.9)
+
+
+def _meta():
+    return {"source_segment": "a", "target_segment": "b", "metric_name": "m"}
+
+
+def test_worker_url_success(monkeypatch):
+    import httpx
+
+    from norn_agent import agent as agentmod
+    from norn_agent.contract import DependencyDecision
+
+    monkeypatch.setenv("NORN_AGENT_WORKER_URL", "http://agent:9400")
+
+    def fake_post(url, json=None, timeout=None):
+        assert url == "http://agent:9400/judge"
+        assert json["meta"]["metric_name"] == "m" and len(json["measurements"]) == 1
+        return httpx.Response(200, json=DependencyDecision(relations=[]).model_dump(),
+                              request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    decision = agentmod.judge_dependencies([_measurement()], _meta())
+    assert decision.relations == []
+
+
+def test_worker_url_down_raises_llm_unavailable(monkeypatch):
+    import httpx
+
+    from norn_agent import agent as agentmod
+    from norn_agent.agent import LLMUnavailable
+
+    monkeypatch.setenv("NORN_AGENT_WORKER_URL", "http://agent:9400")
+
+    def fake_post(url, json=None, timeout=None):
+        raise httpx.ConnectError("connection refused", request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    import pytest
+
+    with pytest.raises(LLMUnavailable):
+        agentmod.judge_dependencies([_measurement()], _meta())
+
+
+def test_worker_url_5xx_raises_llm_unavailable(monkeypatch):
+    import httpx
+
+    from norn_agent import agent as agentmod
+    from norn_agent.agent import LLMUnavailable
+
+    monkeypatch.setenv("NORN_AGENT_WORKER_URL", "http://agent:9400")
+    monkeypatch.setattr(httpx, "post", lambda url, json=None, timeout=None: httpx.Response(
+        503, json={"detail": "llm down"}, request=httpx.Request("POST", url)))
+    import pytest
+
+    with pytest.raises(LLMUnavailable):
+        agentmod.judge_dependencies([_measurement()], _meta())
+
+
+def test_explicit_agent_bypasses_worker(monkeypatch):
+    # инъектированный agent (тесты/локалка) главнее worker_url — HTTP не зовётся
+    import httpx
+
+    from norn_agent import agent as agentmod
+    from norn_agent.contract import DependencyDecision
+
+    monkeypatch.setenv("NORN_AGENT_WORKER_URL", "http://agent:9400")
+    monkeypatch.setattr(httpx, "post",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("HTTP called")))
+
+    class _Ret:
+        output = DependencyDecision(relations=[])
+
+    class _Stub:
+        def run_sync(self, _):
+            return _Ret()
+
+    assert agentmod.judge_dependencies([_measurement()], _meta(), agent=_Stub()).relations == []
