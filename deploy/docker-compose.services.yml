@@ -1,0 +1,88 @@
+# norn SERVICES: timesfm worker, built-in scheduler, MCP server, agent worker.
+# SAME compose project as docker-compose.yml (infra), separate file:
+#   docker compose -f docker-compose.services.yml --profile <p> up -d <svc>
+#   docker compose -f docker-compose.services.yml down        # services ONLY
+# `down` on this file can never remove the infra (clickhouse/lightdash) — they
+# are not in this file's model. NEVER pass --remove-orphans (it would).
+# Cross-file DNS works because both files share the project network: service
+# aliases (clickhouse, timesfm, agent) resolve container-to-container.
+# Infra must be up first (`docker compose up -d` in this directory); there is
+# deliberately no cross-file depends_on. `down` also tries to remove the shared
+# project network and harmlessly fails with "Resource is still in use" while
+# infra containers are attached — expected noise, not an error.
+services:
+  # TimesFM forecast worker (heavy torch/jax stack isolated behind HTTP :9100).
+  # Opt-in profile so a plain `up` doesn't build the 5+GB image:
+  #   docker compose -f docker-compose.services.yml --profile timesfm up -d timesfm
+  # The HF cache lives in a named volume so model weights survive image rebuilds
+  # (a fresh container otherwise re-downloads ~1GB from HF Hub, unauthenticated
+  # and throttled). Set HF_TOKEN in .env for faster authenticated downloads.
+  timesfm:
+    build:
+      context: ..
+      dockerfile: deploy/timesfm.Dockerfile
+    image: norn-timesfm:local
+    container_name: norn-timesfm
+    profiles: ["timesfm"]
+    ports:
+      - "127.0.0.1:9100:9100"
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+
+  # Built-in scheduler: cron for norn jobs (forecast/calibrate/deps) + HTTP :9300.
+  # Single replica by design. Instance job YAMLs + jobs.yml are mounted at /jobs:
+  #   NORN_JOBS_DIR=../instances/ett docker compose -f docker-compose.services.yml --profile scheduler up -d scheduler
+  scheduler:
+    build:
+      context: ..
+      dockerfile: deploy/norn.Dockerfile
+    image: norn:local
+    container_name: norn-scheduler
+    profiles: ["scheduler"]
+    command: ["scheduler", "--manifest", "/jobs/deploy/jobs.yml"]
+    ports:
+      - "127.0.0.1:9300:9300"
+    environment:
+      NORN_SCHEDULER_HOST: 0.0.0.0
+      NORN_DB_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
+      NORN_CLICKHOUSE_URL: ${NORN_CLICKHOUSE_URL:-http://norn:${CLICKHOUSE_PASSWORD:-norn}@clickhouse:8123/norn}
+      NORN_FORECAST_TIMESFM__WORKER_URL: http://timesfm:9100
+      NORN_AGENT_WORKER_URL: ${NORN_AGENT_WORKER_URL:-http://agent:9400}
+    volumes:
+      - ${NORN_JOBS_DIR:-./jobs}:/jobs:ro
+
+  # Read-only MCP server for agents (:9200). Same image as the scheduler.
+  mcp:
+    image: norn:local
+    container_name: norn-mcp
+    profiles: ["mcp"]
+    command: ["mcp"]
+    ports:
+      - "127.0.0.1:9200:9200"
+    environment:
+      NORN_MCP_HOST: 0.0.0.0
+      NORN_DB_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
+      NORN_CLICKHOUSE_URL: ${NORN_CLICKHOUSE_URL:-http://norn:${CLICKHOUSE_PASSWORD:-norn}@clickhouse:8123/norn}
+
+  # Switchable LLM judge. Off (profile not started) => deps jobs write evidence
+  # with explained=false. Ollama on the host is reachable via host.docker.internal.
+  agent:
+    build:
+      context: ..
+      dockerfile: deploy/agent.Dockerfile
+    image: norn-agent:local
+    container_name: norn-agent
+    profiles: ["agent"]
+    ports:
+      - "127.0.0.1:9400:9400"
+    environment:
+      # build_agent() eagerly loads norn settings at startup (DatabaseSettings
+      # requires NORN_DB_PASSWORD), so the worker needs it even though it does
+      # not touch ClickHouse itself.
+      NORN_DB_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
+      NORN_AGENT_BASE_URL: ${NORN_AGENT_BASE_URL:-http://host.docker.internal:11434/v1}
+
+volumes:
+  hf-cache: {}
