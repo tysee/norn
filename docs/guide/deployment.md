@@ -109,6 +109,105 @@ baseline model. To forecast without the worker, use a `baseline-seasonal-naive` 
 
 ---
 
+## Services (scheduler, MCP, agent worker)
+
+Beyond the one-shot CLI, norn ships three long-running services. They are not three
+codebases — a container's role is the **command it runs**. Two of them share one
+light platform image; the LLM judge gets its own light image.
+
+| Service | Image | Command | Port | Purpose |
+|---|---|---|---|---|
+| scheduler | `norn:local` (`deploy/norn.Dockerfile`) | `norn scheduler --manifest …` | 9300 | cron for norn jobs (forecast/calibrate/deps) + HTTP API |
+| MCP | `norn:local` (same image) | `norn mcp` | 9200 | read-only API for agents |
+| agent worker | `norn-agent:local` (`deploy/agent.Dockerfile`) | uvicorn `norn_agent.agent_worker:build_app` | 9400 | switchable LLM dependency judge |
+
+The platform image is light by design: `torch`/`jax` live in the TimesFM worker image,
+and the LLM provider lives behind the agent worker (or the provider's own HTTP API).
+
+### Compose profiles
+
+The same `deploy/docker-compose.yml` defines `scheduler`, `mcp`, and `agent` profiles
+next to the existing `timesfm` profile. Each is opt-in. Instance job YAMLs and the
+`jobs.yml` manifest are mounted read-only at `/jobs` via `NORN_JOBS_DIR` (in k8s this
+is a ConfigMap).
+
+```bash
+cd deploy
+
+# Scheduler: mount the instance root at /jobs (manifest -> /jobs/deploy/jobs.yml).
+NORN_JOBS_DIR=../instances/ett docker compose --profile scheduler up -d scheduler
+
+# Read-only MCP server (:9200), same platform image.
+docker compose --profile mcp up -d mcp
+
+# Switchable LLM judge (:9400). Leave it off and deps jobs degrade explicitly.
+docker compose --profile agent up -d agent
+```
+
+The scheduler is **single-replica by design** — there is no distributed locking in v1.
+Run exactly one.
+
+### jobs.yml manifest
+
+The manifest is the single source of schedule (the `schedule:` field inside a job YAML
+is only a hint and is ignored by the scheduler). It is an explicit list — no globs —
+and an invalid manifest fails fast at startup. One manifest per instance (example:
+`instances/ett/deploy/jobs.yml`):
+
+```yaml
+jobs:
+  - name: ot-timesfm          # unique; used for overlap locks and /trigger
+    action: forecast          # forecast | calibrate | deps
+    job: /jobs/forecasts/ot_timesfm.yml   # path to an existing job YAML (inside the container)
+    schedule: "15 6 * * *"    # cron (5 fields); manifest OVERRIDES the yml hint
+    retries: 2                # optional; default from config/scheduler.yml
+    enabled: true             # optional; default true
+```
+
+With `NORN_JOBS_DIR=../instances/ett` the instance root is mounted at `/jobs`, so the
+manifest is reachable at `/jobs/deploy/jobs.yml` (the compose `command` points there)
+and the job YAMLs at `/jobs/forecasts/…`.
+
+### HTTP API (:9300)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | liveness probe → `{"status":"ok"}` |
+| `GET /jobs` | manifest entries + APScheduler `next_run` + last status |
+| `POST /jobs/{name}/trigger` | manual out-of-schedule run (202; 404 unknown, 409 already running) |
+
+`/jobs` last-status comes from the scheduler's **in-memory last-result map**, not from
+`forecast_run`: `forecast_run` rows carry no manifest-job name (only the metric) and
+calibrate/deps do not write there at all, so in-memory is the only uniform source for
+all three actions. A restart clears the map; `forecast_run` remains the durable audit.
+
+### Failure matrix
+
+| Failure | Behavior |
+|---|---|
+| timesfm worker down | retries (exponential, N from manifest) → `forecast_run.status=failed` + error; next tick runs normally |
+| agent worker off/down | `LLMUnavailable` → evidence written, `explained=false`; NO retries (off is normal) |
+| ClickHouse down | retries → ERROR log (nowhere to audit); `/jobs` shows last_status=error |
+| job overruns its interval | `max_instances=1`: next tick skipped with WARN (no queueing) |
+| scheduler restart | misfire grace: one catch-up within window, older ticks skipped; no state lost (none held) |
+| invalid jobs.yml | fail-fast at startup with a clear message |
+| SIGTERM | graceful: no new ticks, current job finishes (k8s grace period ≥ job length) |
+
+### Service environment
+
+| Variable | Service(s) | Purpose |
+|---|---|---|
+| `NORN_SCHEDULER_HOST` / `NORN_SCHEDULER_PORT` | scheduler | HTTP-API bind address (in-container `0.0.0.0`) and port (default `9300`) |
+| `NORN_SCHEDULER_RETRIES` / `NORN_SCHEDULER_RETRY_BASE_SECONDS` / `NORN_SCHEDULER_MISFIRE_GRACE_SECONDS` | scheduler | retry/misfire defaults (override `config/scheduler.yml`) |
+| `NORN_FORECAST_TIMESFM__WORKER_URL` | scheduler | where `timesfm-2.5` jobs reach the inference worker |
+| `NORN_AGENT_WORKER_URL` | scheduler | URL of the agent worker; unset/empty = LLM judge runs in-process |
+| `NORN_MCP_HOST` / `NORN_MCP_PORT` | MCP | MCP server bind address and port (default `9200`) |
+| `NORN_AGENT_BASE_URL` | agent worker | LLM provider endpoint (e.g. Ollama via `host.docker.internal`) |
+| `NORN_CLICKHOUSE_URL` | scheduler, MCP | full ClickHouse DSN (overrides `database.yml`) |
+| `NORN_DB_PASSWORD` | scheduler, MCP, agent worker | ClickHouse password (the agent worker needs it because settings load eagerly, even though it never touches ClickHouse) |
+
+---
+
 ## Cloud / Kubernetes
 
 The platform has no environment-specific code: a container running the `norn` CLI

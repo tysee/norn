@@ -73,7 +73,10 @@ confused operators: packages are libraries; a container is defined by the
   exponential retry wrapper around the existing `run_job` / `calibrate_job` /
   `analyze_dependencies`, graceful shutdown (current job finishes).
 - **api.py** — FastAPI on :9300: `GET /health`; `GET /jobs` (manifest entries +
-  APScheduler next_run + last status from `forecast_run`);
+  APScheduler next_run + last status from the scheduler's in-memory last-result map
+  (uniform across all three actions — `forecast_run` carries no manifest-name and
+  calibrate/deps don't write it; restart clears the map, `forecast_run` stays the
+  durable audit));
   `POST /jobs/{name}/trigger` (same overlap protection).
 - **CLI**: `norn scheduler --manifest /jobs/jobs.yml` (same pattern as `norn mcp`).
 - **Config**: new `config/scheduler.yml` (host/port, retry defaults, misfire
