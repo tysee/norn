@@ -67,7 +67,14 @@ docker build -f deploy/timesfm.Dockerfile -t norn-timesfm .
 
 ### Run
 
-The worker listens on port **9100**:
+The worker listens on port **9100**. With the local compose stack, prefer the
+services file (named HF-cache volume, weights survive rebuilds):
+
+```bash
+cd deploy && docker compose -f docker-compose.services.yml --profile timesfm up -d timesfm
+```
+
+Or standalone, without compose:
 
 ```bash
 docker run --rm -p 9100:9100 \
@@ -124,24 +131,38 @@ light platform image; the LLM judge gets its own light image.
 The platform image is light by design: `torch`/`jax` live in the TimesFM worker image,
 and the LLM provider lives behind the agent worker (or the provider's own HTTP API).
 
-### Compose profiles
+### Compose: infra vs services (two files, one project)
 
-The same `deploy/docker-compose.yml` defines `scheduler`, `mcp`, and `agent` profiles
-next to the existing `timesfm` profile. Each is opt-in. Instance job YAMLs and the
-`jobs.yml` manifest are mounted read-only at `/jobs` via `NORN_JOBS_DIR` (in k8s this
-is a ConfigMap).
+norn's services live in a **separate compose file** from the infra so that taking
+services down can never remove ClickHouse/Lightdash by accident:
+
+- `deploy/docker-compose.yml` — **infra**: ClickHouse + the Lightdash stack
+- `deploy/docker-compose.services.yml` — **norn services**: `timesfm`, `scheduler`,
+  `mcp`, `agent` (opt-in profiles)
+
+Both files share one compose project (same network, same container/volume names), so
+service aliases resolve across files and `down` on the services file only removes the
+services in it. Two rules: bring infra up first, and **never pass
+`--remove-orphans`** (each file sees the other's containers as orphans;
+`COMPOSE_IGNORE_ORPHANS=true` in `.env` silences the warning).
 
 ```bash
 cd deploy
+docker compose up -d                       # infra first (clickhouse + lightdash)
 
 # Scheduler: mount the instance root at /jobs (manifest -> /jobs/deploy/jobs.yml).
-NORN_JOBS_DIR=../instances/ett docker compose --profile scheduler up -d scheduler
+NORN_JOBS_DIR=../instances/ett docker compose -f docker-compose.services.yml \
+  --profile scheduler up -d scheduler
 
 # Read-only MCP server (:9200), same platform image.
-docker compose --profile mcp up -d mcp
+docker compose -f docker-compose.services.yml --profile mcp up -d mcp
 
 # Switchable LLM judge (:9400). Leave it off and deps jobs degrade explicitly.
-docker compose --profile agent up -d agent
+docker compose -f docker-compose.services.yml --profile agent up -d agent
+
+# Stop ALL norn services — infra is untouched by construction:
+docker compose -f docker-compose.services.yml \
+  --profile timesfm --profile scheduler --profile mcp --profile agent down
 ```
 
 The scheduler is **single-replica by design** — there is no distributed locking in v1.
