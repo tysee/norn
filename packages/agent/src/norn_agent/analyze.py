@@ -23,6 +23,7 @@ LLM-агента: достаёт свежие ряды двух сегменто
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -104,6 +105,9 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> Anal
     s_ts, s_v = _series(client, job.mart, job.metric, job.source_segment, job.context_length)
     t_ts, t_v = _series(client, job.mart, job.metric, job.target_segment, job.context_length)
     src, tgt, (w0, w1) = _align(s_ts, s_v, t_ts, t_v)
+    # Прогресс-лог: deps-проход длится минуты (LLM-судья), без вех выглядит зависшим.
+    logger.info("run %s extract: %d aligned points (%s..%s) %s -> %s",
+                run_id, len(src), w0, w1, job.source_segment, job.target_segment)
 
     # --- compute: прогнать выбранные методы-улики (granger получает тюнинги из конфига) ---
     from norn_core.config import get_settings
@@ -144,9 +148,14 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> Anal
         "target_segment": job.target_segment,
         "metric_name": job.metric,
     }
+    logger.info("run %s judge: %d measurements via LLM %s/%s — local models can take minutes",
+                run_id, len(measurements), a.provider, a.model)
+    t0 = time.monotonic()
     try:
         decision = judge_dependencies(measurements, meta, prior_measurements=prior, agent=agent)
         explained, reason = True, None
+        logger.info("run %s judge: done in %.1fs (relations=%d)",
+                    run_id, time.monotonic() - t0, len(decision.relations))
     except LLMUnavailable as e:
         logger.error("LLM explanation skipped for run %s (provider=%s model=%s): %s",
                      run_id, a.provider, a.model, e, exc_info=True)

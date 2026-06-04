@@ -118,7 +118,28 @@ services:
     volumes:
       - ${DBT_PROJECT_HOST_DIR:-./dbt}:/usr/app/dbt
 
+  # TimesFM forecast worker (heavy torch/jax stack isolated behind HTTP :9100).
+  # Opt-in profile so a plain `up` doesn't build the 5+GB image:
+  #   docker compose --profile timesfm up -d timesfm
+  # The HF cache lives in a named volume so model weights survive image rebuilds
+  # (a fresh container otherwise re-downloads ~1GB from HF Hub, unauthenticated
+  # and throttled). Set HF_TOKEN in .env for faster authenticated downloads.
+  timesfm:
+    build:
+      context: ..
+      dockerfile: deploy/timesfm.Dockerfile
+    image: norn-timesfm:local
+    container_name: norn-timesfm
+    profiles: ["timesfm"]
+    ports:
+      - "127.0.0.1:9100:9100"
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+
 volumes:
   clickhouse-data: {}
   lightdash-db-data: {}
   minio-data: {}
+  hf-cache: {}

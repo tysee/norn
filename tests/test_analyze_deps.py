@@ -105,6 +105,26 @@ def test_analyze_degrades_explicitly_when_llm_unavailable(ch):
     assert m == 0
 
 
+def test_analyze_logs_stage_progress(ch, caplog):
+    # Observability regression: a deps run spends minutes inside a silent LLM call
+    # (local Ollama) — without stage logs the whole run looks hung. analyze must
+    # log extract/judge progress at INFO on its own logger.
+    import logging
+
+    ch.command("TRUNCATE TABLE IF EXISTS metric_dependency")
+    ch.command("TRUNCATE TABLE IF EXISTS dependency_explanation")
+    ch.command("DROP TABLE IF EXISTS mart_metric")
+    _seed_mart(ch)
+    job = DependencyJob(source_segment="symbol=BTCUSDT", target_segment="symbol=TONUSDT",
+                        metric="log_return", max_lag=10)
+    test_agent = Agent(TestModel(), output_type=DependencyDecision, system_prompt=SYSTEM_PROMPT)
+    with caplog.at_level(logging.INFO, logger="norn_agent.analyze"):
+        analyze_dependencies(job, client=ch, agent=test_agent)
+    msgs = [r.message for r in caplog.records]
+    assert any("extract" in m for m in msgs), msgs   # aligned-points stage
+    assert any("judge" in m for m in msgs), msgs     # LLM stage (the slow one)
+
+
 def test_explanation_uses_canonical_segment_keys(ch):
     # Regression for the E2E contract bug: dependency_explanation must use the job's
     # canonical 'symbol=...' segment keys (same as metric_dependency), NOT whatever the

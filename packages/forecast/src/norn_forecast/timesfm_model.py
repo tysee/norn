@@ -54,6 +54,10 @@ class TimesFM25Model:
                 force_flip_invariance=True,
                 infer_is_positive=True,
                 fix_quantile_crossing=True,
+                # XReg-путь (forecast_with_covariates) требует return_backcast=True.
+                # Побочный эффект: forecast() возвращает [backcast, forecast] по оси
+                # времени — predict() срезает последние horizon шагов на обоих путях.
+                return_backcast=True,
             )
         )
 
@@ -73,9 +77,13 @@ class TimesFM25Model:
             # при расхождении адаптируй здесь — стабильный контракт воркера в FakeModel.
             import os
 
-            mode = os.environ.get("NORN_TIMESFM_XREG_MODE", "xreg+timesfm")
+            mode = os.environ.get("NORN_TIMESFM_XREG_MODE", "xreg + timesfm")
+            # TimesFM 2.5 ждёт режимы с пробелами ("xreg + timesfm"); компактные
+            # legacy-значения из старых конфигов нормализуем, чтобы не падать.
+            mode = {"xreg+timesfm": "xreg + timesfm", "timesfm+xreg": "timesfm + xreg"}.get(mode, mode)
+            # forecast_with_covariates не принимает horizon: глубина выводится из
+            # длины ковариат (len(covariate) - len(values)); runner шлёт context+horizon.
             point_forecast, quantile_forecast = self._model.forecast_with_covariates(
-                horizon=horizon,
                 inputs=[np.asarray(values, dtype=float)],
                 dynamic_numerical_covariates={
                     k: [np.asarray(v, dtype=float)]
@@ -87,10 +95,12 @@ class TimesFM25Model:
             point_forecast, quantile_forecast = self._model.forecast(
                 horizon=horizon, inputs=[np.asarray(values, dtype=float)]
             )
-        # point_forecast: (1, horizon); quantile_forecast: (1, horizon, 10).
+        # point_forecast: (1, T); quantile_forecast: (1, T, 10), где T >= horizon
+        # (с return_backcast=True forecast() отдаёт [backcast, forecast]) — берём
+        # последние horizon шагов; XReg-путь уже отдаёт ровно horizon (срез no-op).
         # Quantile columns are [mean, q10, q20, ..., q90] -> column = round(q*10).
-        point = point_forecast[0]
-        quant = quantile_forecast[0]
+        point = point_forecast[0][-horizon:]
+        quant = quantile_forecast[0][-horizon:]
 
         def _col(q: float) -> int:
             return int(round(q * 10))

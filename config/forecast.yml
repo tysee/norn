@@ -25,7 +25,7 @@ calibration:
 # ковариаты (XReg): horizon_policy strict (lag>=horizon) | ffill (продлить лидера); режим XReg
 covariates:
   horizon_policy: strict
-  xreg_mode: "xreg+timesfm"
+  xreg_mode: "xreg + timesfm"  # формат TimesFM 2.5 (с пробелами): "xreg + timesfm" | "timesfm + xreg"
 
 # Сколько месяцев хранить контракт-таблицы (TTL поверх PARTITION BY месяц). 0 = без авто-удаления.
 retention_months: 12
