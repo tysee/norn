@@ -12,6 +12,9 @@ RUN pip install --no-cache-dir \
 # дефолтный конфиг запекается; всё переопределяется env (env > yaml), секреты только env
 COPY config/ /app/config/
 ENV NORN_CONFIG_DIR=/app/config
+# unbuffered stdout/stderr: docker logs show scheduler progress immediately
+# (e2e finding: buffered logs looked empty during startup health races)
+ENV PYTHONUNBUFFERED=1
 
 ENTRYPOINT ["norn"]
 CMD ["--help"]
