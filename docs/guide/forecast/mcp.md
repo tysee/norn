@@ -25,7 +25,7 @@ This serves over the **streamable-http** transport at `http://<host>:<port>/mcp`
 | `host` | `127.0.0.1` | Interface to bind. Loopback by default (local only). |
 | `port` | `9200` | TCP port. |
 
-The bind host is **config-driven**. The default `127.0.0.1` means the server is reachable only from the same machine. To expose it to remote agents, set `host` to a routable interface (e.g. `0.0.0.0`) in `mcp.yml` or via the env override `NORN_MCP_HOST` — and put it behind your own network controls. See [Configuration](configuration.md) for the override pattern.
+The bind host is **config-driven**. The default `127.0.0.1` means the server is reachable only from the same machine. To expose it to remote agents, set `host` to a routable interface (e.g. `0.0.0.0`) in `mcp.yml` or via the env override `NORN_MCP_HOST` — and put it behind your own network controls. See [Configuration](../configuration.md) for the override pattern.
 
 ### Example MCP client config
 
@@ -97,7 +97,7 @@ get_dependencies(target_segment="dataset=ETTh1|feature=ot", metric="ot")
 
 The contract tables always reflect the **most recent** run — there is no versioned history except `get_dependency_history`. Before acting on a forecast, an agent should check freshness and status:
 
-- **`get_run_status` / `get_forecast_status`** report `status`, `model_name` / `model_version`, run timings (`started_at` / `finished_at`), and — for `get_forecast_status` — `last_forecast_ts` (the latest forecast timestamp). Use these to detect a stale or `failed` run before trusting the points. A `timesfm-2.5` run whose worker was unreachable records `status=failed` and writes no points — there is no silent fallback (see [Deployment](deployment.md) and [Jobs](jobs.md)).
+- **`get_run_status` / `get_forecast_status`** report `status`, `model_name` / `model_version`, run timings (`started_at` / `finished_at`), and — for `get_forecast_status` — `last_forecast_ts` (the latest forecast timestamp). Use these to detect a stale or `failed` run before trusting the points. A `timesfm-2.5` run whose worker was unreachable records `status=failed` and writes no points — there is no silent fallback (see [Deployment](../deployment.md) and [Jobs](../jobs.md)).
 - **`is_sparse`** in `get_calibration` flags that the calibration metrics rest on few points (`n_points`) and should be read with caution.
 - **`get_dependencies.explained`** distinguishes the two layers of a dependency record:
   - `explained: true` — the numeric evidence (`methods[]`) **and** the LLM agent's judgment (`is_real`, `confidence`, `explanation`, `caveats`, `change_note`) are present.
@@ -105,6 +105,6 @@ The contract tables always reflect the **most recent** run — there is no versi
 
 ## See also
 
-- [Jobs](jobs.md) — how forecast and dependency runs populate the tables these tools read.
-- [Configuration](configuration.md) — `mcp.yml` host/port and the env-override pattern.
-- [User Guide index](README.md) · [Project root](../../README.md)
+- [Jobs](../jobs.md) — how forecast and dependency runs populate the tables these tools read.
+- [Configuration](../configuration.md) — `mcp.yml` host/port and the env-override pattern.
+- [User Guide index](../README.md) · [Project root](../../../README.md)

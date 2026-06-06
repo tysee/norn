@@ -5,7 +5,7 @@
 norn is driven by **jobs** — small YAML files that describe what to forecast (a
 forecast job) or which lead/lag relationships to analyze (a dependency job). You
 run a job with the CLI; results land in the forecast/dependency **contract
-tables** in ClickHouse, where the [MCP tools](mcp.md) read them.
+tables** in ClickHouse, where the [MCP tools](forecast/mcp.md) read them.
 
 This page covers forecast jobs, calibration, dependency jobs, schema ownership,
 and the contract tables they write to.
@@ -168,7 +168,7 @@ the `forecast_segment` table:
 | `n_points` | Number of points the segment was evaluated on. |
 | `is_sparse` | Flag: the segment had too little history for a reliable verdict. |
 
-These same fields surface through the `get_calibration` [MCP tool](mcp.md), so
+These same fields surface through the `get_calibration` [MCP tool](forecast/mcp.md), so
 an agent can check calibration (including `is_sparse`) before trusting a band.
 
 ---
@@ -232,7 +232,7 @@ it raises `LLMUnavailable` internally, logs the failure (ERROR with traceback),
 and skips the explanation step — the **statistical evidence in
 `metric_dependency` is still written**. There is no silent fabrication of a
 verdict. Consumers detect this via the `explained` flag returned by the
-`get_dependencies` [MCP tool](mcp.md): `explained=false` means a numeric
+`get_dependencies` [MCP tool](forecast/mcp.md): `explained=false` means a numeric
 dependency exists but no LLM verdict was produced.
 
 ---
@@ -294,7 +294,7 @@ inside a forecast job YAML is ignored by the scheduler. See
 
 - [Configuration](configuration.md) — `forecast`, `agent`, and `database`
   sections that supply job defaults, the LLM provider, and `manage_schema`.
-- [MCP](mcp.md) — the read tools that serve these contract tables to agents.
+- [MCP](forecast/mcp.md) — the read tools that serve these contract tables to agents.
 - [Deployment](deployment.md) — the built-in scheduler and the services that
   run jobs.
 - Domain specifics (concrete metrics, marts, segments) live in an instance

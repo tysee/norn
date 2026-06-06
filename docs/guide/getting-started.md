@@ -155,7 +155,7 @@ For the ETT instance the concrete call is
 
 There are **11 tools** in total (forecasts, expected ranges, band classification,
 calibration, dependencies, run status, and listing). The full connection setup and tool
-reference is in [MCP](mcp.md).
+reference is in [MCP](forecast/mcp.md).
 
 ---
 
@@ -186,6 +186,6 @@ and `forecasts/deps/*.yml`) that forecast the `ot` oil-temperature metric per
 
 - [Configuration](configuration.md) — config layer, all sections, env overrides, LLM providers.
 - [Jobs](jobs.md) — full forecast/dependency job fields, calibration, schema modes.
-- [MCP](mcp.md) — connecting and the 11-tool reference.
+- [MCP](forecast/mcp.md) — connecting and the 11-tool reference.
 - [Deployment](deployment.md) — local Docker, the TimesFM worker, and cloud/k8s.
 - Project root: [README](../../README.md).

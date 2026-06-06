@@ -52,11 +52,12 @@ Full user guide lives in [`docs/guide/`](docs/guide/README.md):
 
 - [Overview & architecture](docs/guide/overview.md) — what norn is, the data flow, the platform ↔ instance model.
 - [Getting started](docs/guide/getting-started.md) — copy-pasteable local quickstart.
-- [Configuration](docs/guide/configuration.md) — config layers, all sections, LLM providers, env overrides.
+- [Configuration](docs/guide/configuration.md) — the config model: layers, env overrides, secrets, instance config dirs.
 - [Jobs](docs/guide/jobs.md) — forecast/dependency job contracts, calibration, schema-ownership modes.
-- [Forecast methodology](docs/guide/forecast-methodology.md) — how the forecasters work: baseline math, TimesFM, quantiles, calibration.
-- [MCP](docs/guide/mcp.md) — connecting and the 11-tool reference for agents.
+- [Forecast methodology](docs/guide/forecast/methodology.md) — how the forecasters work: baseline math, TimesFM, quantiles, calibration.
+- [MCP](docs/guide/forecast/mcp.md) — connecting and the 11-tool reference for agents.
 - [Deployment](docs/guide/deployment.md) — local Docker, the TimesFM worker, the long-running services (scheduler, MCP, agent worker), cloud/Kubernetes.
+- Package reference — one page per package (description, functionality, configuration): [core](docs/guide/core/README.md) · [integration](docs/guide/integration/README.md) · [forecast](docs/guide/forecast/README.md) · [agent](docs/guide/agent/README.md) · [scheduler](docs/guide/scheduler/README.md).
 
 Architecture deep-dive and integrations:
 
