@@ -1,4 +1,7 @@
 # config/scheduler.yml
+# Platform defaults read from NORN_CONFIG_DIR (default: config/); an instance may ship its own
+# config dir and point NORN_CONFIG_DIR at it (e.g. NORN_CONFIG_DIR=instances/example/config).
+# Env vars (NORN_SCHEDULER_*) override any value here.
 # Parameters of norn's built-in scheduler: the HTTP-API address and the job retry policy.
 host: 127.0.0.1            # interface of the scheduler HTTP-API (in the container overridden by env NORN_SCHEDULER_HOST=0.0.0.0)
 port: 9300                 # TCP port of the HTTP-API (/health, /jobs, trigger)

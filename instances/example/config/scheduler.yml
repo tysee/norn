@@ -1,0 +1,13 @@
+# instances/example/config/scheduler.yml
+# Built-in scheduler settings for this instance.
+# This file is loaded when NORN_CONFIG_DIR=instances/example/config (or your
+# renamed copy of this directory).
+#
+# Environment-variable overrides use the NORN_SCHEDULER_ prefix
+# (e.g. NORN_SCHEDULER_HOST=0.0.0.0 in the container to bind on all interfaces).
+
+host: 127.0.0.1            # interface of the scheduler HTTP-API (override to 0.0.0.0 inside the container)
+port: 9300                 # TCP port of the scheduler HTTP-API (/health, /jobs, trigger)
+retries: 2                 # retries of a failed job (on top of the 1st attempt); the manifest may override per-job
+retry_base_seconds: 30     # base of the exponential pause between retries: base * 2^attempt
+misfire_grace_seconds: 3600  # a tick missed due to a restart is caught up once within this window

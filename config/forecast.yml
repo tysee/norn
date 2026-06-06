@@ -1,4 +1,7 @@
 # config/forecast.yml
+# Platform defaults read from NORN_CONFIG_DIR (default: config/); an instance may ship its own
+# config dir and point NORN_CONFIG_DIR at it (e.g. NORN_CONFIG_DIR=instances/example/config).
+# Env vars (NORN_FORECAST_*) override any value here.
 # Parameters of the norn platform's forecast subsystem: default values for jobs,
 # the set of forecast quantiles, TimesFM model worker settings, and calibration parameters.
 # Values here are platform defaults; a specific job-YAML may override them.

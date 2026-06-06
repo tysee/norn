@@ -1,0 +1,38 @@
+# instances/example/config/forecast.yml
+# Forecast subsystem settings for this instance.
+# This file is loaded when NORN_CONFIG_DIR=instances/example/config (or your
+# renamed copy of this directory).
+#
+# The values here are the instance-level defaults; individual job YAML files
+# (forecasts/*.yml) may override horizon, context_length, and seasonality per job.
+# Environment-variable overrides use the NORN_FORECAST_ prefix with double-underscore
+# nesting (e.g. NORN_FORECAST_DEFAULTS__HORIZON=14).
+
+# Forecast defaults, applied when a job does not set the field explicitly.
+defaults:
+  horizon: 14         # 2-week-ahead forecast; adjust to your planning horizon
+  context_length: 180 # ~6 months of daily history fed to the model
+  seasonality: 7      # weekly seasonality (7 daily steps); change to 24 for hourly data
+
+# Forecast quantiles: lower/median/upper — form the uncertainty intervals.
+quantiles: [0.1, 0.5, 0.9]
+
+# Settings for the external TimesFM model worker.
+# The worker must be running at worker_url before executing any timesfm-2.5 jobs.
+# Start it with: docker compose -f docker-compose.services.yml --profile timesfm up -d timesfm
+timesfm:
+  worker_url: "http://localhost:9100"  # URL of the HTTP worker that runs TimesFM inference
+  max_context: 1024                     # upper limit of the context length accepted by the model
+  max_horizon: 1024                     # upper limit of the model's forecast depth
+
+# Rolling-origin calibration parameters.
+calibration:
+  n_cutoffs: 8   # number of origins for rolling-origin backtest; >=8 for a stable estimate
+
+# Covariate (XReg) settings: how to handle lead/lag covariates in TimesFM XReg mode.
+covariates:
+  horizon_policy: strict          # strict: only use covariates with lag >= horizon; ffill: extend forward
+  xreg_mode: "xreg + timesfm"    # TimesFM 2.5 format string (spaces matter)
+
+# How many months to retain the contract tables. 0 = no automatic deletion.
+retention_months: 12

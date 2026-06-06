@@ -1,0 +1,14 @@
+norn_example:
+  target: local
+  outputs:
+    local:
+      type: clickhouse
+      driver: http
+      host: "{{ env_var('CH_HOST', 'localhost') }}"
+      port: 8123
+      user: norn
+      password: norn
+      # CH_SCHEMA lets tests build into an isolated DB (e.g. norn_example_test)
+      # instead of the live norn_example — set it when running the test suite.
+      schema: "{{ env_var('CH_SCHEMA', 'norn_example') }}"
+      secure: false

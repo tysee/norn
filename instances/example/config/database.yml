@@ -1,0 +1,22 @@
+# instances/example/config/database.yml
+# Instance-specific ClickHouse connection settings.
+# This file is loaded when NORN_CONFIG_DIR=instances/example/config (or your
+# renamed copy of this directory). It overrides the platform default config/.
+#
+# All values can be overridden via environment variables with the NORN_DB_ prefix
+# (e.g. NORN_DB_HOST, NORN_DB_PORT, NORN_DB_USER, NORN_DB_DATABASE).
+# Secrets are NEVER placed here — set NORN_DB_PASSWORD in the environment.
+
+host: localhost   # ClickHouse host; override with NORN_DB_HOST in production
+port: 8123        # ClickHouse HTTP port (native HTTP interface)
+user: norn        # DB username; the norn platform creates contract tables under this user
+database: example_db  # name of the database where the contract schema lives; rename to match your project
+secure: false     # set to true (and set NORN_DB_PASSWORD) for a TLS-secured connection
+
+# Ownership of the contract tables schema:
+#   true  — norn idempotently creates its contract tables (zero-setup, good for dev).
+#   false — norn does NOT run DDL (INSERT only); manage DDL externally via dbt or migrations.
+#           Use `norn print-schema` to get the canonical CREATE TABLE statements.
+manage_schema: true
+
+# password: taken from env NORN_DB_PASSWORD (secret, not in YAML)

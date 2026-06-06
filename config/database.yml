@@ -1,4 +1,7 @@
 # config/database.yml
+# Platform defaults read from NORN_CONFIG_DIR (default: config/); an instance may ship its own
+# config dir and point NORN_CONFIG_DIR at it (e.g. NORN_CONFIG_DIR=instances/example/config).
+# Env vars (NORN_DB_*) override any value here.
 # Connection parameters for the ClickHouse store — the norn platform's local sidecar,
 # where contract rows (forecasts, calibration, dependencies) are written.
 # Secrets (password, etc.) are not placed here: they are overridden via environment variables.
