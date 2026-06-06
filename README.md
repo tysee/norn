@@ -67,6 +67,7 @@ Full user guide lives in [`docs/guide/`](docs/guide/README.md):
 - `packages/scheduler` — built-in cron scheduler (APScheduler from a `jobs.yml` manifest) + FastAPI control API (port `9300`)
 - `cli` — the `norn` entrypoint (`schema-apply`, `print-schema`, `forecast`, `calibrate`, `deps`, `mcp`, `scheduler`, `up`)
 - `instances/ett` — the public example instance (ETT — Electricity Transformer Temperature): ingestion, dbt marts (`mart_metric` / `fct_ot`), and forecast/deps jobs
+- `instances/example` — the copyable template instance (settings, no data): config, example jobs (`forecasts/orders_baseline.yml`, `forecasts/orders_timesfm.yml`, `forecasts/deps/visits_orders.yml`), and a dbt skeleton
 - `deploy/docker-compose.yml` — infra stack: local ClickHouse sidecar + optional Lightdash BI stack
 - `deploy/docker-compose.services.yml` — norn's own services (`timesfm`, `scheduler`, `mcp`, `agent`), split into a separate file so taking services down can never remove the infra
 - `deploy/timesfm.Dockerfile` — self-contained TimesFM forecast worker (port `9100`)

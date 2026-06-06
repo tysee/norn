@@ -1,7 +1,8 @@
--- Metric derived from raw candles. Empty until raw_candles is populated separately.
+-- Long metric store in the platform contract shape (ts, metric_name, value,
+-- segment_key). Empty until raw_metric is populated by your instance.
 select
     ts,
-    symbol,
     metric_name,
-    value
-from {{ source('norn', 'raw_candles') }}
+    value,
+    segment_key
+from {{ source('norn', 'raw_metric') }}

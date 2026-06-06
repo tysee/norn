@@ -21,6 +21,11 @@ it with:
 uv run norn forecast path/to/job.yml
 ```
 
+Copyable job templates (forecast, TimesFM, and dependency) live in
+[`instances/example/forecasts/`](../../instances/example/forecasts/). They use
+placeholder metric names and are designed to be copied into a new instance and
+adjusted to point at real marts and dimensions.
+
 ### Fields
 
 | field | type | default | meaning |

@@ -1,4 +1,6 @@
-# Generic example forecast-job (NOT crypto — crypto jobs live in norn-crypto-instance).
+# Abstract bring-your-own-mart forecast-job — no instance required.
+# Real worked example: instances/ett/forecasts/ot_baseline.yml
+# Copyable starting template: instances/example/forecasts/
 metric: sales
 source: analytics.mart_metric
 grain: daily

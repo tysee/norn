@@ -1,0 +1,35 @@
+# instances/example/config/agent.yml
+# Dependency-analysis subsystem settings for this instance.
+# This file is loaded when NORN_CONFIG_DIR=instances/example/config (or your
+# renamed copy of this directory).
+#
+# Environment-variable overrides use the NORN_AGENT_ prefix.
+# LLM API keys are NEVER placed here — pass them via environment variables:
+#   ollama        -> no key needed
+#   openai-api    -> OPENAI_API_KEY
+#   openai-oauth  -> NORN_OPENAI_OAUTH_TOKEN
+#   openrouter    -> OPENROUTER_API_KEY
+#   anthropic-api -> ANTHROPIC_API_KEY
+
+# LLM provider for the dependency-analysis agent.
+# Default is local Ollama (no cloud credentials required).
+provider: ollama
+model: gemma4:e2b   # openai-api: gpt-4o-mini | openrouter: anthropic/claude-sonnet-4-5 | anthropic-api: claude-sonnet-4-5
+base_url: http://localhost:11434/v1   # Ollama endpoint; set to null for cloud providers
+output_mode: native                   # native (Ollama / JSON-schema) | tool (cloud) | prompted
+
+# Lag search parameters — adjust to the temporal resolution of your data.
+max_lag: 10           # maximum lag (in series steps) to test for lead/lag relationships
+context_length: 180   # historical window (steps) fed into the dependency analysis
+
+# Statistical methods used to estimate lead/lag relationships before the LLM judge.
+methods: [lagged_cross_correlation, granger]
+
+# Granger-causality parameters.
+granger_min_points_factor: 3    # minimum data points for Granger = factor * max_lag
+granger_significance: 0.05      # p-value threshold below which the Granger test is significant
+
+# URL of the agent worker (LLM judge as a separate service).
+# null = judge runs in-process (default, simplest setup).
+# Set to the worker URL (e.g. http://localhost:9400) to use the agent-worker container.
+worker_url: null

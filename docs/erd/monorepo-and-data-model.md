@@ -21,7 +21,7 @@ norn/                    # repository tysee/norn (uv workspace, all packages v0.
 ├── cli/                # typer orchestrator: `norn forecast|calibrate|deps|mcp|scheduler|…`
 ├── deploy/             # docker-compose (infra + services), Dockerfiles, Lightdash bring-up
 ├── config/             # central YAML config (database/forecast/agent/mcp/scheduler)
-├── instances/          # domain instances (submodules): ett (public example), …
+├── instances/          # domain instances: ett is a submodule; example is a plain tracked dir (copyable template)
 └── pyproject.toml      # uv workspace, shared lint/types, requires-python >=3.12
 ```
 
@@ -236,7 +236,14 @@ single source of truth; a job YAML's own `schedule:` is a hint and ignored) / op
 close); retries are exponential (`retry_base_seconds * 2^attempt`). State is ephemeral (`last_results`
 in memory); the durable audit lives in `forecast_run`.
 
-## 8. The ETT example, end to end
+## 8. Instances
+
+`instances/` holds domain instances in two forms:
+
+- **`instances/ett`** — a git submodule (`norn-ett-instance`). The public worked example with real data, ingestion, and scheduler wiring.
+- **`instances/example`** — a plain tracked directory (not a submodule). The copyable starting template: config files for all five sections, example forecast jobs (`orders_baseline.yml`, `orders_timesfm.yml`) and a dependency job (`deps/visits_orders.yml`), and a minimal dbt skeleton. Copy this directory to bootstrap a new instance; replace the placeholder mart and metric names with your own.
+
+### The ETT example, end to end
 
 The public example instance `instances/ett` (`ett` CLI, `norn-ett` package) ingests the ETDataset
 "ETT-small" CSVs into `raw_ett` and exposes the dbt marts above. A typical run:

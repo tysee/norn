@@ -220,3 +220,6 @@ __marimo__/
 .DS_Store
 docs/superpowers/
 AGENTS.md
+instances/crypto/
+
+.playwright-mcp/

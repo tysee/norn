@@ -1,4 +1,6 @@
-# Generic example dependency-job (domain-neutral; crypto job lives in norn-crypto-instance).
+# Abstract bring-your-own-mart dependency-job — no instance required.
+# Real worked example: instances/ett/forecasts/deps/hufl_etth1.yml
+# Copyable starting template: instances/example/forecasts/
 source_segment: segment=A
 target_segment: segment=B
 metric: value

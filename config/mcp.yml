@@ -1,4 +1,7 @@
 # config/mcp.yml
+# Platform defaults read from NORN_CONFIG_DIR (default: config/); an instance may ship its own
+# config dir and point NORN_CONFIG_DIR at it (e.g. NORN_CONFIG_DIR=instances/example/config).
+# Env vars (NORN_MCP_*) override any value here.
 # Parameters of the norn platform's MCP server: the address where the streamable-http
 # server is brought up, through which agents request forecasts and dependencies from the contract.
 

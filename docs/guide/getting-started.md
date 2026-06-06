@@ -163,12 +163,22 @@ reference is in [MCP](mcp.md).
 
 The platform is intentionally empty of domain content: it reads marts you provide and
 writes forecasts back. An **instance** repo supplies the ingestion, marts (your
-`<your_mart>`), jobs, and dashboards. For a concrete worked example, see the
-`norn-ett-instance` repo, vendored at [`instances/ett`](../../instances/ett) — it ingests
-the public ETT (Electricity Transformer Temperature) dataset, builds the `mart_metric` /
-`fct_ot` marts, and ships ready-to-run jobs (`forecasts/ot_baseline.yml`,
-`forecasts/ot_timesfm.yml`, `forecasts/ot_timesfm_xreg.yml`, and `forecasts/deps/*.yml`)
-that forecast the `ot` oil-temperature metric per `dataset=ETTh1|feature=ot` segment.
+`<your_mart>`), jobs, and dashboards.
+
+**Starting a new instance — [`instances/example`](../../instances/example)** is a
+plain tracked directory (not a submodule) that serves as the copyable starting template.
+It contains the full instance skeleton — config files, example forecast and dependency
+jobs, and a minimal dbt skeleton — with no ingestion or live data.
+Copy the directory, adjust the config and job files to point at your mart, and you have a
+working instance. See the layout note in [README](../../README.md) for the directory
+structure.
+
+**Concrete worked example — [`instances/ett`](../../instances/ett)** (`norn-ett-instance`
+submodule) ingests the public ETT (Electricity Transformer Temperature) dataset, builds
+the `mart_metric` / `fct_ot` marts, and ships ready-to-run jobs
+(`forecasts/ot_baseline.yml`, `forecasts/ot_timesfm.yml`, `forecasts/ot_timesfm_xreg.yml`,
+and `forecasts/deps/*.yml`) that forecast the `ot` oil-temperature metric per
+`dataset=ETTh1|feature=ot` segment.
 
 ---
 

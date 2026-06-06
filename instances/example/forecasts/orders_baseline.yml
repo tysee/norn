@@ -1,0 +1,23 @@
+# Forecast job: daily order count, baseline model.
+# Uses seasonal-naive (no external model worker required).
+#
+# fct_orders is a dbt view narrowed to orders rows from mart_metric.
+# The `region` dimension produces one forecast series per region
+# (segment_key = "region=<value>").
+#
+# Run with:
+#   NORN_CONFIG_DIR=instances/example/config \
+#     uv run norn forecast instances/example/forecasts/orders_baseline.yml
+
+metric: orders          # metric_name stored in forecast_point output rows
+source: fct_orders      # ClickHouse view from dbt (already filtered to orders; columns: ts, region, orders, segment_key)
+grain: daily
+dimensions: [region]    # one forecast series per region; segment_key = "region=<value>"
+horizon: 14             # 14-day-ahead forecast
+context_length: 180     # ~6 months of daily history
+seasonality: 7          # weekly pattern
+model: baseline-seasonal-naive
+transform: none
+
+# schedule: hint only — the scheduler manifest (deploy/jobs.yml) is the source of truth
+schedule: "0 6 * * *"

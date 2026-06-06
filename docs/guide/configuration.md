@@ -184,6 +184,25 @@ rather than the `NORN_<SECTION>_<FIELD>` form:
 - `NORN_DB_PASSWORD` — `database.password` (env-only secret).
 - `NORN_CLICKHOUSE_URL` — `database.dsn` (full DSN override).
 
+## Instance config dirs
+
+An instance can ship its own config directory alongside its jobs and dbt models.
+Set `NORN_CONFIG_DIR` to the instance's config path and all five section files
+are loaded from there instead of the repo root `config/`:
+
+```bash
+NORN_CONFIG_DIR=instances/example/config uv run norn forecast instances/example/forecasts/orders_baseline.yml
+```
+
+The priority rule is unchanged: **env > yaml**. Any `NORN_<SECTION>_<FIELD>`
+environment variable still overrides the value in the instance's YAML file —
+there is no difference in override semantics between the default `config/` and
+an instance-owned directory.
+
+[`instances/example/config/`](../../instances/example/config/) is the canonical
+template for a new instance's config directory: it contains all five section
+files with sensible starting values and explanatory comments.
+
 ## See also
 
 - [Deployment](deployment.md) — required env per environment, cloud/k8s notes, the TimesFM worker.
