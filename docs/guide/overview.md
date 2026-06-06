@@ -18,7 +18,7 @@ Concretely, norn:
 - **serves** those tables to consumers (agents, dashboards) through a read-only
   MCP tool surface.
 
-The platform ships **no domain defaults** — no built-in metrics, symbols,
+The platform ships **no domain defaults** — no built-in metrics,
 dimensions, ingestion formats, dashboards, prompts, or model choice. You point
 it at your own marts and describe what to forecast with abstract jobs such as
 `metric: <your_metric>`, `source: <your_mart>`, `segment=<dim=value>`.
@@ -28,6 +28,8 @@ it at your own marts and describe what to forecast with abstract jobs such as
 The data flow is:
 
 ```text
+scheduler (cron) ──┐
+                   ▼
 dbt → ClickHouse → forecast worker (baseline / TimesFM) → Lightdash
                           │
                           ├── MCP server (agent / bot interface)
@@ -36,6 +38,10 @@ dbt → ClickHouse → forecast worker (baseline / TimesFM) → Lightdash
 
 - **dbt** transforms raw data into marts inside **ClickHouse** (the warehouse is
   the single shared datastore for marts and contract tables).
+- The **scheduler** is the built-in cron service: it reads a `jobs.yml`
+  manifest and triggers `forecast`, `calibrate`, and `deps` runs on a schedule
+  (APScheduler under a small FastAPI control API). You can also run any job
+  one-off from the CLI; the scheduler just automates the same lifecycle.
 - The **forecast worker** extracts each metric series and writes back forecasts.
   The forecaster is selected per job by `model`: `baseline-seasonal-naive`
   (built-in, needs no external service) or `timesfm-2.5` (calls the standalone
@@ -59,7 +65,7 @@ norn separates the **generic platform** from a domain-specific **instance**:
 > warehouse, via a generic contract (`forecast_point` / `forecast_segment`),
 > configurable model/provider/database, and an MCP contract. The platform code
 > (`packages/*`, `cli`) carries **no domain defaults** — no built-in metrics,
-> symbols, dimensions, ingestion formats, dashboards, prompts, or LLM model
+> dimensions, ingestion formats, dashboards, prompts, or LLM model
 > choice. All domain specifics live in a separate instance repo.
 
 - **Platform** (`packages/*`, `cli`): generic engine — forecasting, calibration,
@@ -68,10 +74,11 @@ norn separates the **generic platform** from a domain-specific **instance**:
   jobs, and dashboards. An instance plugs into the platform (typically as a
   submodule) and provides everything domain-specific.
 
-Domain specifics (metrics, symbols, dashboards) live in an instance repo —
-e.g. `norn-crypto-instance`. Any concrete domain mentioned anywhere in this
-guide is a **labeled example pointing at that instance**, never a platform
-requirement.
+Domain specifics (metrics, dimensions, dashboards) live in an instance repo —
+e.g. `norn-ett-instance` (the public example, the Electricity Transformer
+Temperature dataset, mounted at `instances/ett`). Any concrete domain mentioned
+anywhere in this guide is a **labeled example pointing at that instance**, never
+a platform requirement.
 
 ## Features
 
@@ -87,6 +94,10 @@ requirement.
 - **XReg covariates** — confirmed lead/lag dependencies can become forecast
   covariates (`use_dependencies`); covariate horizons are handled per
   `covariates.horizon_policy` (`strict` | `ffill`).
+- **Built-in scheduler** — a small cron service (`norn scheduler --manifest
+  jobs.yml`) runs `forecast` / `calibrate` / `deps` jobs on a schedule via
+  APScheduler, with a FastAPI control API (`/health`, `/jobs`, manual
+  `/jobs/{name}/trigger`).
 - **MCP tool surface** — exactly **11 read-only tools** over the contract tables
   for agents and bots.
 - **Configurable LLM provider** — 5 providers for dependency explanations:

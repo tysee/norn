@@ -29,9 +29,9 @@ Think of it as a **forecasting layer for your data warehouse**:
 
 Under the hood: `dbt → ClickHouse → forecast worker (baseline / TimesFM) →
 Lightdash`, plus an MCP interface for agents. This repo is the **generic
-platform** — it ships no domain defaults. Concrete domain instances (e.g.
-crypto) plug in ingestion, marts, jobs, and dashboards from linked submodule
-repos.
+platform** — it ships no domain defaults. Concrete domain instances (e.g. the
+[`instances/ett`](instances/ett) ETT example) plug in ingestion, marts, jobs,
+and dashboards from linked submodule repos.
 
 ## Quickstart (local)
 
@@ -54,17 +54,21 @@ Full user guide lives in [`docs/guide/`](docs/guide/README.md):
 - [Getting started](docs/guide/getting-started.md) — copy-pasteable local quickstart.
 - [Configuration](docs/guide/configuration.md) — config layers, all sections, LLM providers, env overrides.
 - [Jobs](docs/guide/jobs.md) — forecast/dependency job contracts, calibration, schema-ownership modes.
+- [Forecast methodology](docs/guide/forecast-methodology.md) — how the forecasters work: baseline math, TimesFM, quantiles, calibration.
 - [MCP](docs/guide/mcp.md) — connecting and the 11-tool reference for agents.
-- [Deployment](docs/guide/deployment.md) — local Docker, the TimesFM worker, cloud/Kubernetes.
+- [Deployment](docs/guide/deployment.md) — local Docker, the TimesFM worker, the long-running services (scheduler, MCP, agent worker), cloud/Kubernetes.
 
 ## Layout
 
 - `packages/core` — config + job contracts (forecast-job, forecast-point) + ClickHouse client
-- `packages/integration` — ClickHouse DDL (the 5 contract tables) + dbt/Lightdash glue
-- `packages/forecast` — forecasters (`baseline-seasonal-naive` and `timesfm-2.5`), runner, and the MCP server (11 tools)
-- `packages/agent` — lead/lag dependency analysis (stats + LLM explanation)
-- `cli` — the `norn` entrypoint (`schema-apply`, `print-schema`, `forecast`, `calibrate`, `deps`, `mcp`, `up`)
-- `deploy/docker-compose.yml` — local ClickHouse sidecar (optional Lightdash stack)
+- `packages/integration` — the canonical ClickHouse DDL (the 5 contract tables: `forecast_run`, `forecast_point`, `forecast_segment`, `metric_dependency`, `dependency_explanation`)
+- `packages/forecast` — forecasters (`baseline-seasonal-naive` and `timesfm-2.5`), runner, the TimesFM HTTP worker, and the MCP server (11 tools)
+- `packages/agent` — lead/lag dependency analysis (stats + LLM explanation) and the agent worker
+- `packages/scheduler` — built-in cron scheduler (APScheduler from a `jobs.yml` manifest) + FastAPI control API (port `9300`)
+- `cli` — the `norn` entrypoint (`schema-apply`, `print-schema`, `forecast`, `calibrate`, `deps`, `mcp`, `scheduler`, `up`)
+- `instances/ett` — the public example instance (ETT — Electricity Transformer Temperature): ingestion, dbt marts (`mart_metric` / `fct_ot`), and forecast/deps jobs
+- `deploy/docker-compose.yml` — infra stack: local ClickHouse sidecar + optional Lightdash BI stack
+- `deploy/docker-compose.services.yml` — norn's own services (`timesfm`, `scheduler`, `mcp`, `agent`), split into a separate file so taking services down can never remove the infra
 - `deploy/timesfm.Dockerfile` — self-contained TimesFM forecast worker (port `9100`)
 
 ## Tests

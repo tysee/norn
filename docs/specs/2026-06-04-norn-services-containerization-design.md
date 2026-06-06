@@ -1,7 +1,13 @@
 # norn services & containerization — design
 
 **Date:** 2026-06-04
-**Status:** approved in brainstorming, pending spec review
+**Status:** implemented. This is the original design doc, kept for historical
+context; the current implementation lives in `packages/scheduler` (built-in
+scheduler + HTTP API on :9300), `packages/agent/.../agent_worker.py` (switchable
+LLM judge on :9400), the platform image `deploy/norn.Dockerfile`, and the
+infra/services compose split (`deploy/docker-compose.yml` +
+`deploy/docker-compose.services.yml`). Where this doc and the code differ, the
+code is authoritative.
 
 ## Problem
 

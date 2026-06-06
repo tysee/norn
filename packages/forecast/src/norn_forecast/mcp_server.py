@@ -11,7 +11,7 @@ mcp config.
 Methods:
 - build_server(client=None) -> FastMCP — assembles the server and registers the
   tools from TOOL_NAMES (default client — get_client()).
-- TOOL_NAMES — names of the registered tools (7).
+- TOOL_NAMES — names of the registered tools (11).
 """
 from __future__ import annotations
 
