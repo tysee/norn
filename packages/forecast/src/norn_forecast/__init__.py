@@ -1,8 +1,8 @@
 """
 packages/forecast/src/norn_forecast/__init__.py
 
-Пакет norn_forecast — слой прогнозирования платформы norn. Извлекает временные
-ряды по сегментам из ClickHouse-контракта, строит квантильные прогнозы
-(baseline seasonal-naive или TimesFM 2.5), считает rolling-origin калибровку и
-отдаёт результаты агенту через MCP-инструменты поверх контракт-таблиц.
+The norn_forecast package — the forecasting layer of the norn platform. Pulls per-segment
+time series from the ClickHouse contract, builds quantile forecasts
+(baseline seasonal-naive or TimesFM 2.5), computes rolling-origin calibration and
+exposes the results to the agent through MCP tools on top of the contract tables.
 """

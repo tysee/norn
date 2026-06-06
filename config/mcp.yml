@@ -1,6 +1,6 @@
 # config/mcp.yml
-# Параметры MCP-сервера платформы norn: адрес, на котором поднимается streamable-http
-# сервер, через который агенты запрашивают прогнозы и зависимости из контракта.
+# Parameters of the norn platform's MCP server: the address where the streamable-http
+# server is brought up, through which agents request forecasts and dependencies from the contract.
 
-host: 127.0.0.1   # интерфейс, на котором слушает MCP-сервер (127.0.0.1 — только локально)
-port: 9200        # TCP-порт MCP-сервера
+host: 127.0.0.1   # interface the MCP server listens on (127.0.0.1 — local only)
+port: 9200        # TCP port of the MCP server

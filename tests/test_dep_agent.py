@@ -228,7 +228,7 @@ def test_worker_url_5xx_raises_llm_unavailable(monkeypatch):
 
 
 def test_explicit_agent_bypasses_worker(monkeypatch):
-    # инъектированный agent (тесты/локалка) главнее worker_url — HTTP не зовётся
+    # an injected agent (tests/local) takes precedence over worker_url — HTTP is not called
     import httpx
 
     from norn_agent import agent as agentmod

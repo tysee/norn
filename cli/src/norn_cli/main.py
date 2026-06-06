@@ -1,23 +1,24 @@
 """
 cli/src/norn_cli/main.py
 
-Единая точка входа в платформу norn через командную строку (на базе typer).
-Связывает воедино подсистемы платформы — локальный сайдкар-хранилище
-(ClickHouse в Docker), применение контракт-схемы, запуск прогнозов и их
-калибровки, анализ зависимостей рядов и поднятие MCP-сервера — давая
-оператору один CLI вместо вызова каждой подсистемы по отдельности.
+A single command-line entry point into the norn platform (built on typer).
+Ties together the platform's subsystems — the local sidecar store
+(ClickHouse in Docker), applying the contract schema, running forecasts and
+their calibration, analyzing series dependencies and bringing up the
+MCP server — giving the operator one CLI instead of invoking each subsystem
+separately.
 
-Объект:
-- app — корневое typer-приложение, собирающее все команды.
+Object:
+- app — the root typer application that assembles all commands.
 
-Команды (typer):
-- schema_apply — идемпотентно применить контракт-схему к ClickHouse.
-- forecast — прогон job: extract -> forecast -> запись строк контракта.
-- calibrate — rolling-origin калибровка (coverage/wape/mape/bias).
-- deps — анализ lead/lag зависимостей + объяснение агента.
-- mcp — поднять MCP-сервер (streamable-http) для запросов агентов.
-- scheduler — встроенный шедулер (cron-джобы + HTTP-API) из jobs.yml.
-- up — поднять локальный сайдкар (ClickHouse) в Docker.
+Commands (typer):
+- schema_apply — idempotently apply the contract schema to ClickHouse.
+- forecast — run a job: extract -> forecast -> write contract rows.
+- calibrate — rolling-origin calibration (coverage/wape/mape/bias).
+- deps — analyze lead/lag dependencies + agent explanation.
+- mcp — bring up the MCP server (streamable-http) for agent queries.
+- scheduler — built-in scheduler (cron jobs + HTTP API) from jobs.yml.
+- up — bring up the local sidecar (ClickHouse) in Docker.
 """
 from __future__ import annotations
 
@@ -75,15 +76,15 @@ def forecast(
     job_path: Annotated[str, typer.Argument(help="path to a forecast-job YAML")],
 ) -> None:
     """Run a forecast job: extract -> forecast -> write contract rows."""
-    # --- читаем декларативный job из YAML ---
+    # --- read the declarative job from YAML ---
     job = ForecastJob.from_yaml(job_path)
-    # --- подключаемся к хранилищу и гарантируем актуальность схемы ---
+    # --- connect to the store and ensure the schema is up to date ---
     # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
     try:
         s = get_settings()
         prepare_schema(client, s.database.manage_schema, s.forecast.retention_months)
-        # --- запускаем прогон и печатаем идентификатор запуска ---
+        # --- run the job and print the run identifier ---
         run_id = run_job(job, client=client)
         typer.echo(f"run_id={run_id}")
     finally:
@@ -95,15 +96,15 @@ def calibrate(
     job_path: Annotated[str, typer.Argument(help="path to a forecast-job YAML")],
 ) -> None:
     """Rolling-origin calibration: writes coverage/wape/mape/bias to forecast_segment."""
-    # --- читаем тот же job-контракт, что и для прогноза ---
+    # --- read the same job contract used for the forecast ---
     job = ForecastJob.from_yaml(job_path)
-    # --- подключаемся к хранилищу и гарантируем актуальность схемы ---
+    # --- connect to the store and ensure the schema is up to date ---
     # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
     try:
         s = get_settings()
         prepare_schema(client, s.database.manage_schema, s.forecast.retention_months)
-        # --- прогоняем rolling-origin калибровку и печатаем run_id ---
+        # --- run rolling-origin calibration and print the run_id ---
         run_id = calibrate_job(job, client=client)
         typer.echo(f"calibration run_id={run_id}")
     finally:
@@ -115,16 +116,16 @@ def deps(
     job_path: Annotated[str, typer.Argument(help="path to a dependency-job YAML")],
 ) -> None:
     """Analyze lead/lag dependencies and write evidence + the agent's explanation."""
-    # --- читаем декларативный dependency-job из YAML ---
+    # --- read the declarative dependency-job from YAML ---
     job = DependencyJob.from_yaml(job_path)
-    # --- подключаемся к хранилищу и гарантируем актуальность схемы ---
+    # --- connect to the store and ensure the schema is up to date ---
     # one-shot CLI: own the connection pool and release it on exit
     client = get_client()
     try:
         s = get_settings()
-        # Прогресс: судья-LLM работает минуты (локальная Ollama) — без этих строк
-        # прогон выглядит зависшим. basicConfig поднимает INFO-вехи analyze в stderr
-        # (no-op, если логирование уже настроено хостом).
+        # Progress: the LLM judge runs for minutes (local Ollama) — without these
+        # lines the run looks hung. basicConfig surfaces analyze's INFO milestones
+        # on stderr (no-op if logging is already configured by the host).
         import logging
 
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
@@ -133,7 +134,7 @@ def deps(
             f"(LLM judge: {s.agent.provider}/{s.agent.model})"
         )
         prepare_schema(client, s.database.manage_schema, s.forecast.retention_months)
-        # --- считаем зависимости, пишем evidence и печатаем run_id ---
+        # --- compute dependencies, write evidence and print the run_id ---
         res = analyze_dependencies(job, client=client)
         typer.echo(f"deps run_id={res.run_id}")
         if not res.explained:
@@ -153,8 +154,8 @@ def mcp() -> None:
 
     from norn_forecast.mcp_server import build_server
 
-    # Конфиг-ошибки (нет NORN_DB_PASSWORD и т.п.) — это операторская проблема,
-    # а не баг: печатаем, какие env/поля не заданы, вместо сырого traceback.
+    # Config errors (missing NORN_DB_PASSWORD, etc.) are an operator problem,
+    # not a bug: print which env/fields are unset instead of a raw traceback.
     try:
         server = build_server()
     except ValidationError as e:
@@ -183,7 +184,7 @@ def scheduler(
     import norn_scheduler.service as svc
     from norn_scheduler.manifest import SchedulerManifest
 
-    # fail-fast: невалидный манифест — операторская ошибка, печатаем поле и причину
+    # fail-fast: an invalid manifest is an operator error, print the field and reason
     try:
         SchedulerManifest.from_yaml(manifest)
     except (ValidationError, ValueError, OSError) as e:

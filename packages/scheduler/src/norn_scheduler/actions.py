@@ -1,10 +1,10 @@
 """
 packages/scheduler/src/norn_scheduler/actions.py
 
-Один запуск одной манифест-джобы — общая единица для cron-тика, ретраев и
-ручного /trigger. Повторяет one-shot жизненный цикл CLI: открыть клиент,
-prepare_schema, выполнить действие, закрыть клиент. Аудит пишут сами действия
-(run_job -> forecast_run и т.д.) — здесь только диспетчеризация.
+A single run of a single manifest job — the shared unit for a cron tick, retries
+and a manual /trigger. Mirrors the CLI one-shot lifecycle: open the client,
+prepare_schema, perform the action, close the client. The actions write their
+own audit (run_job -> forecast_run, etc.) — only dispatch happens here.
 """
 from __future__ import annotations
 

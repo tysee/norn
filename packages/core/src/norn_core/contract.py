@@ -1,20 +1,20 @@
 """
 packages/core/src/norn_core/contract.py
 
-Контракт слоя прогнозов платформы norn: типизированные модели описания
-прогноз-задания (forecast-job, задаётся в YAML) и единичной точки прогноза
-(forecast-point, строка таблицы результатов). Это общий язык между forecast-воркером,
-который читает задания и пишет точки, и integration-слоем, который их потребляет;
-модели гарантируют единый формат данных и валидацию на границах сервисов.
+Contract of the norn platform's forecast layer: typed models describing a
+forecast-job (defined in YAML) and a single forecast point
+(forecast-point, a row of the results table). This is the shared language between the
+forecast-worker, which reads jobs and writes points, and the integration layer that consumes them;
+the models guarantee a single data format and validation at service boundaries.
 
-Классы/методы:
-- Grain — зерно временного ряда (hourly | daily), задаёт частоту точек.
-- CovariateSpec — спецификация ряда-лидера (metric/segment/lag/mart) для XReg-ковариат.
-- ForecastJob — описание прогноз-задания (метрика, источник, разрезы, гиперпараметры, расписание).
-  * ForecastJob.from_yaml(path) — загрузка и валидация задания из YAML-файла.
-  * ForecastJob.resolved() — копия задания с дозаполненными из config-слоя tunables (явные значения важнее).
-- ForecastPoint — одна точка прогноза: предсказание y_hat и интервалы p10/p50/p90,
-  опциональный факт y_actual, идентификаторы прогона/метрики/сегмента и метки времени.
+Classes/methods:
+- Grain — time-series grain (hourly | daily), sets the point frequency.
+- CovariateSpec — leader-series spec (metric/segment/lag/mart) for XReg covariates.
+- ForecastJob — forecast-job description (metric, source, dimensions, hyperparameters, schedule).
+  * ForecastJob.from_yaml(path) — load and validate a job from a YAML-file.
+  * ForecastJob.resolved() — copy of the job with tunables filled in from the config layer (explicit values win).
+- ForecastPoint — a single forecast point: the y_hat prediction and the p10/p50/p90 intervals,
+  an optional y_actual fact, run/metric/segment identifiers and timestamps.
 """
 from __future__ import annotations
 
@@ -62,9 +62,9 @@ class ForecastJob(BaseModel):
         """Fill unset tunables from the config layer (explicit job values win)."""
         from norn_core.config import get_settings
 
-        # --- источник дефолтов: секция forecast.defaults из config-слоя ---
+        # --- defaults source: the forecast.defaults section from the config layer ---
         d = get_settings().forecast.defaults
-        # --- merge: значение из задания приоритетнее дефолта (None => берём дефолт) ---
+        # --- merge: the job value takes priority over the default (None => use default) ---
         return self.model_copy(update={
             "horizon": self.horizon if self.horizon is not None else d.horizon,
             "context_length": self.context_length if self.context_length is not None else d.context_length,

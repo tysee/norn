@@ -1,26 +1,26 @@
 """
 packages/core/src/norn_core/config.py
 
-YAML-native типизированный config-слой платформы norn. Один pydantic-settings класс
-на секцию (database/forecast/agent/mcp); каждый читает свой config/<section>.yml и
-позволяет переопределять значения через переменные окружения. Это единый источник
-настроек для всех сервисов платформы: воркеры и агент не парсят файлы напрямую, а
-получают валидированные типизированные объекты с предсказуемым приоритетом источников.
+YAML-native typed config layer of the norn platform. One pydantic-settings class
+per section (database/forecast/agent/mcp); each reads its own config/<section>.yml and
+allows overriding values via environment variables. This is the single source of
+settings for all platform services: workers and the agent do not parse files directly,
+they receive validated typed objects with a predictable source priority.
 
-Приоритет источников: init-аргументы (тесты) > env > YAML-файл. Python-дефолтов полей
-больше нет — YAML/env являются единственными источниками обязательных значений; отсутствие
-ключа во всех источниках → явный ValidationError (а не тихая подстановка дефолта).
+Source priority: init-arguments (tests) > env > YAML-file. Python field defaults are
+gone — YAML/env are the only sources of required values; a missing key in all
+sources → an explicit ValidationError (not a silent default substitution).
 
-Классы/методы:
-- _YamlSection — базовый класс секции; настраивает порядок источников (env > yaml).
-- DatabaseSettings — подключение к ClickHouse (host/port/user/password/database/secure + DSN-override).
-- ForecastDefaults / TimesFMSettings / CalibrationSettings — вложенные блоки настроек прогноза.
-- ForecastSettings — секция прогноза (дефолты, квантили, параметры TimesFM, калибровка).
-- AgentSettings — секция агента (модель, лаги, методы анализа зависимостей).
-- McpSettings — секция MCP-сервера (host/port).
-- SchedulerSettings — секция встроенного шедулера (host/port + политика ретраев/misfire).
-- Settings — агрегат всех секций.
-- get_settings(refresh=False) -> Settings — кэшированные настройки (читает NORN_CONFIG_DIR; refresh сбрасывает кэш).
+Classes/methods:
+- _YamlSection — base section class; sets up the source order (env > yaml).
+- DatabaseSettings — ClickHouse connection (host/port/user/password/database/secure + DSN-override).
+- ForecastDefaults / TimesFMSettings / CalibrationSettings — nested forecast settings blocks.
+- ForecastSettings — forecast section (defaults, quantiles, TimesFM parameters, calibration).
+- AgentSettings — agent section (model, lags, dependency-analysis methods).
+- McpSettings — MCP-server section (host/port).
+- SchedulerSettings — built-in scheduler section (host/port + retry/misfire policy).
+- Settings — aggregate of all sections.
+- get_settings(refresh=False) -> Settings — cached settings (reads NORN_CONFIG_DIR; refresh resets the cache).
 """
 from __future__ import annotations
 
@@ -58,10 +58,10 @@ class _YamlSection(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ):
-        # --- источник YAML: файл секции из каталога NORN_CONFIG_DIR ---
-        # Явный, диагностируемый отказ, если конфиг-файл не найден (напр. в
-        # контейнере/k8s, где cwd != корень репо): иначе pydantic молча игнорирует
-        # отсутствующий YAML и падает обобщённым "field required".
+        # --- YAML source: the section file from the NORN_CONFIG_DIR directory ---
+        # Explicit, diagnosable failure if the config file is not found (e.g. in a
+        # container/k8s, where cwd != repo root): otherwise pydantic silently ignores
+        # the missing YAML and fails with a generic "field required".
         yaml_path = _config_dir() / cls.YAML_FILE
         if not yaml_path.is_file():
             raise FileNotFoundError(
@@ -70,7 +70,7 @@ class _YamlSection(BaseSettings):
                 f"cwd={Path.cwd()}."
             )
         yaml_src = YamlConfigSettingsSource(settings_cls, yaml_file=yaml_path)
-        # --- порядок = приоритет: init kwargs (tests) > env > yaml (без дефолтов полей) ---
+        # --- order = priority: init kwargs (tests) > env > yaml (no field defaults) ---
         return (init_settings, env_settings, yaml_src)
 
 
@@ -83,9 +83,9 @@ class DatabaseSettings(_YamlSection):
     database: str
     secure: bool
     manage_schema: bool   # true: norn creates contract tables; false: INSERT-only, DDL is external
-    # секрет: ТОЛЬКО из env NORN_DB_PASSWORD (не в YAML, без дефолта)
+    # secret: ONLY from env NORN_DB_PASSWORD (not in YAML, no default)
     password: str = Field(validation_alias=AliasChoices("NORN_DB_PASSWORD", "password"))
-    # единственный опциональный override (env NORN_CLICKHOUSE_URL): None = override не задан
+    # the only optional override (env NORN_CLICKHOUSE_URL): None = override not set
     dsn: str | None = Field(default=None, validation_alias=AliasChoices("NORN_CLICKHOUSE_URL", "dsn"))
 
 
@@ -126,7 +126,7 @@ class AgentSettings(_YamlSection):
     YAML_FILE: ClassVar[str] = "agent.yml"
     provider: str               # ollama | openai-api | openai-oauth | openrouter | anthropic-api
     model: str
-    base_url: str | None        # ollama: обязателен URL; cloud: null. Нет неявного фолбека.
+    base_url: str | None        # ollama: URL required; cloud: null. No implicit fallback.
     output_mode: str            # native | tool | prompted
     max_lag: int
     context_length: int
@@ -164,7 +164,7 @@ class Settings(BaseModel):
 
 @functools.lru_cache(maxsize=1)
 def _cached() -> Settings:
-    # --- сборка агрегата: каждая секция читает свой YAML + env при инстанцировании ---
+    # --- aggregate assembly: each section reads its own YAML + env on instantiation ---
     return Settings(
         database=DatabaseSettings(),
         forecast=ForecastSettings(),

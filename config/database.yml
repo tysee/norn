@@ -1,16 +1,16 @@
 # config/database.yml
-# Параметры подключения к хранилищу ClickHouse — локальному сайдкару платформы norn,
-# куда пишутся строки контракта (прогнозы, калибровка, зависимости).
-# Секреты (пароль и т.п.) сюда не кладутся: они переопределяются через переменные окружения.
+# Connection parameters for the ClickHouse store — the norn platform's local sidecar,
+# where contract rows (forecasts, calibration, dependencies) are written.
+# Secrets (password, etc.) are not placed here: they are overridden via environment variables.
 
-host: localhost   # хост ClickHouse; для локального сайдкара — localhost
-port: 8123        # HTTP-порт ClickHouse (нативный HTTP-интерфейс)
-user: norn        # имя пользователя БД
-database: norn    # имя базы данных, где живёт контракт-схема
-secure: false     # использовать ли TLS-подключение (true для защищённого соединения)
-# Владение схемой контракт-таблиц:
-#   true  — norn идемпотентно создаёт свои контракт-таблицы в своей БД (zero-setup).
-#   false — norn НЕ выполняет DDL (только INSERT); заведите таблицы своим dbt/миграциями,
-#           каноническую DDL печатает `norn print-schema`. Роль БД тогда без прав CREATE.
+host: localhost   # ClickHouse host; for the local sidecar — localhost
+port: 8123        # ClickHouse HTTP port (native HTTP interface)
+user: norn        # DB username
+database: norn    # name of the database where the contract schema lives
+secure: false     # whether to use a TLS connection (true for a secured connection)
+# Ownership of the contract tables schema:
+#   true  — norn idempotently creates its contract tables in its DB (zero-setup).
+#   false — norn does NOT run DDL (INSERT only); create the tables via your own dbt/migrations,
+#           the canonical DDL is printed by `norn print-schema`. The DB role then has no CREATE rights.
 manage_schema: true
-# password: берётся из env NORN_DB_PASSWORD (секрет, не в YAML)
+# password: taken from env NORN_DB_PASSWORD (secret, not in YAML)

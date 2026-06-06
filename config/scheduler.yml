@@ -1,7 +1,7 @@
 # config/scheduler.yml
-# Параметры встроенного шедулера norn: адрес HTTP-API и политика ретраев джоб.
-host: 127.0.0.1            # интерфейс HTTP-API шедулера (в контейнере переопределяется env NORN_SCHEDULER_HOST=0.0.0.0)
-port: 9300                 # TCP-порт HTTP-API (/health, /jobs, trigger)
-retries: 2                 # ретраи упавшей джобы (поверх 1-й попытки); манифест может переопределить per-job
-retry_base_seconds: 30     # база экспоненциальной паузы между ретраями: base * 2^attempt
-misfire_grace_seconds: 3600  # пропущенный из-за рестарта тик догоняется один раз в этом окне
+# Parameters of norn's built-in scheduler: the HTTP-API address and the job retry policy.
+host: 127.0.0.1            # interface of the scheduler HTTP-API (in the container overridden by env NORN_SCHEDULER_HOST=0.0.0.0)
+port: 9300                 # TCP port of the HTTP-API (/health, /jobs, trigger)
+retries: 2                 # retries of a failed job (on top of the 1st attempt); the manifest may override per-job
+retry_base_seconds: 30     # base of the exponential pause between retries: base * 2^attempt
+misfire_grace_seconds: 3600  # a tick missed due to a restart is caught up once within this window

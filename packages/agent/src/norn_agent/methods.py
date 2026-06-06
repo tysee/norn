@@ -1,20 +1,20 @@
 """
 packages/agent/src/norn_agent/methods.py
 
-Статистические методы-улики слоя зависимостей платформы norn. Каждый метод
-получает два выровненных (в идеале стационарных) ряда и возвращает единое
-DependencyMeasurement — компактную улику с лагом, силой связи, направлением и
-уверенностью. Эти улики не выносят вердикт сами по себе: их интерпретирует
-LLM-агент. Реестр METHODS позволяет оркестратору выбирать методы по имени из
-конфига job.
+Statistical evidence methods of the norn platform's dependency subsystem. Each
+method receives two aligned (ideally stationary) series and returns a single
+DependencyMeasurement — a compact piece of evidence with a lag, relationship
+strength, direction and confidence. This evidence does not pass a verdict on its
+own: an LLM agent interprets it. The METHODS registry lets the orchestrator pick
+methods by name from the job config.
 
-Публичные функции:
+Public functions:
 - lagged_cross_correlation(source, target, max_lag) -> DependencyMeasurement —
-  ищет лаг с максимальной по модулю кросс-корреляцией; направление = кто ведёт.
+  finds the lag with the largest absolute cross-correlation; direction = who leads.
 - granger(source, target, max_lag, min_points_factor=3, significance=0.05)
-  -> DependencyMeasurement — тест причинности Грейнджера (source -> target);
-  score = -log10(p), порог значимости передаётся параметром significance.
-- METHODS — реестр {name: callable} для выбора методов по DependencyJob.methods.
+  -> DependencyMeasurement — Granger causality test (source -> target);
+  score = -log10(p), the significance threshold is passed via the significance parameter.
+- METHODS — a {name: callable} registry for selecting methods by DependencyJob.methods.
 """
 from __future__ import annotations
 
@@ -22,21 +22,21 @@ import numpy as np
 
 from norn_agent.contract import DependencyMeasurement
 
-# Наименьшее представимое p-значение: F-тест может вернуть ровно 0.0 (underflow
-# крошечного p), что иначе всегда проходило бы любой положительный порог
-# significance. Приравниваем к этому полу, чтобы порог оставался реальным рычагом.
+# Smallest representable p-value: the F-test can return exactly 0.0 (underflow of
+# a tiny p), which would otherwise always pass any positive significance threshold.
+# We clamp to this floor so the threshold stays a real lever.
 _P_VALUE_FLOOR = 1e-12
 
 
 def lagged_cross_correlation(
     source: list[float], target: list[float], max_lag: int
 ) -> DependencyMeasurement:
-    # --- выровнять длины рядов по общему хвосту ---
+    # --- align series lengths on the common tail ---
     s = np.asarray(source, dtype=float)
     t = np.asarray(target, dtype=float)
     n = min(s.size, t.size)
     s, t = s[-n:], t[-n:]
-    # --- перебрать лаги и запомнить максимальную по модулю корреляцию ---
+    # --- sweep lags and remember the largest absolute correlation ---
     best_lag, best_corr = 0, 0.0
     for lag in range(-max_lag, max_lag + 1):
         if lag > 0:
@@ -52,7 +52,7 @@ def lagged_cross_correlation(
             continue
         if abs(corr) > abs(best_corr):
             best_lag, best_corr = lag, float(corr)
-    # --- знак лучшего лага задаёт направление ведущего ряда ---
+    # --- the sign of the best lag sets the leading series' direction ---
     direction = (
         "source_leads" if best_lag > 0
         else "target_leads" if best_lag < 0
@@ -72,7 +72,7 @@ def granger(
     source: list[float], target: list[float], max_lag: int,
     min_points_factor: int = 3, significance: float = 0.05,
 ) -> DependencyMeasurement:
-    # --- слишком короткий ряд для надёжного теста: вернуть нейтральную улику ---
+    # --- series too short for a reliable test: return a neutral piece of evidence ---
     s = np.asarray(source, dtype=float)
     t = np.asarray(target, dtype=float)
     n = min(s.size, t.size)
@@ -101,15 +101,15 @@ def granger(
             method="granger", lag=1, score=float(-np.log10(1e-12)),
             direction="source_leads", p_value=0.0, confidence=1.0,
         )
-    # --- выбрать лаг с наименьшим p-значением F-теста по остаткам ---
+    # --- pick the lag with the smallest p-value of the F-test on residuals ---
     best_lag, best_p = 0, 1.0
     for lag, (stats, _) in res.items():
         p = float(stats["ssr_ftest"][1])
         if p < best_p:
             best_p, best_lag = p, lag
-    # --- underflow крошечного p до ровного 0 поднимаем до пола (порог остаётся рычагом) ---
+    # --- raise an underflowed tiny p of exactly 0 up to the floor (threshold stays a lever) ---
     best_p = max(best_p, _P_VALUE_FLOOR)
-    # --- порог значимости -> направление; score = -log10(p) ---
+    # --- significance threshold -> direction; score = -log10(p) ---
     direction = "source_leads" if best_p < significance else "inconclusive"
     score = float(-np.log10(best_p)) if best_p > 0 else 0.0
     return DependencyMeasurement(

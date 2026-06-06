@@ -1,4 +1,4 @@
--- actual-vs-forecast: факт из mart_metric vs прогноз из forecast_point.
+-- actual-vs-forecast: actual from mart_metric vs forecast from forecast_point.
 select
     f.metric_name,
     f.segment_key,

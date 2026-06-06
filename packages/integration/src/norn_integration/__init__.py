@@ -1,11 +1,11 @@
 """
 packages/integration/src/norn_integration/__init__.py
 
-Пакет интеграции с внешним хранилищем платформы norn.
+Integration package for the norn platform's external storage.
 
-Отвечает за слой персистентности результатов: связывает доменные пайплайны
-(прогнозирование, анализ зависимостей) с аналитическим хранилищем ClickHouse.
-Здесь живёт DDL-контракт (schema.sql) и его идемпотентное применение к
-кластеру, чтобы остальные пакеты могли писать и читать результаты по единой,
-стабильной схеме таблиц.
+Responsible for the result-persistence layer: it connects domain pipelines
+(forecasting, dependency analysis) with the ClickHouse analytical store.
+This is where the DDL contract (schema.sql) lives, along with its idempotent
+application to the cluster, so that the other packages can write and read
+results against a single, stable table schema.
 """

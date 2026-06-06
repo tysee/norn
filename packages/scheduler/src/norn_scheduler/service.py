@@ -1,16 +1,16 @@
 """
 packages/scheduler/src/norn_scheduler/service.py
 
-Встроенный шедулер norn: манифест -> APScheduler (cron-триггеры) -> запуск
-действий с ретраями. Single-replica по дизайну (без распределённых локов).
-Состояние самого шедулера эфемерно: last_results живёт в памяти до рестарта,
-durable-аудит остаётся в контракте (forecast_run и т.п.).
+Built-in norn scheduler: manifest -> APScheduler (cron triggers) -> running
+actions with retries. Single-replica by design (no distributed locks).
+The scheduler's own state is ephemeral: last_results lives in memory until
+restart, durable audit stays in the contract (forecast_run, etc.).
 
-Классы/функции:
-- NornScheduler — обвязка BackgroundScheduler: register/start/shutdown,
-  trigger(name) для ручного запуска, last_results для /jobs.
-- serve(manifest_path) — собрать шедулер + FastAPI и крутить uvicorn (вызывается
-  командой `norn scheduler`).
+Classes/functions:
+- NornScheduler — BackgroundScheduler wiring: register/start/shutdown,
+  trigger(name) for a manual run, last_results for /jobs.
+- serve(manifest_path) — build the scheduler + FastAPI and spin up uvicorn
+  (invoked by the `norn scheduler` command).
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 class NornScheduler:
-    """APScheduler wiring around manifest jobs. `run` инъектируется в тестах."""
+    """APScheduler wiring around manifest jobs. `run` is injected in tests."""
 
     def __init__(self, manifest: SchedulerManifest,
                  run: Callable[[ManifestJob], str] = run_action,
@@ -40,10 +40,10 @@ class NornScheduler:
 
         self.manifest = manifest
         self._run = run
-        self._sleep = sleep  # инъекция для тестов: реальные ретраи спят config-секунды
+        self._sleep = sleep  # injected for tests: real retries sleep config seconds
         self._cfg = get_settings().scheduler
         self.aps = BackgroundScheduler(timezone="UTC")
-        # имя -> {status, run_id|error, at}; только для /jobs (рестарт теряет — ок)
+        # name -> {status, run_id|error, at}; only for /jobs (lost on restart — ok)
         self.last_results: dict[str, dict] = {}
         self._running: set[str] = set()
         self._lock = threading.Lock()
@@ -61,7 +61,7 @@ class NornScheduler:
         logger.info("scheduler started: %d enabled jobs", len(self.manifest.enabled_jobs()))
 
     def shutdown(self) -> None:
-        # graceful: новые тики не стартуют, текущая джоба дорабатывает
+        # graceful: new ticks don't start, the current job finishes
         self.aps.shutdown(wait=True)
 
     # --- execution ---
@@ -76,7 +76,7 @@ class NornScheduler:
                 "status": "success", "run_id": run_id,
                 "at": datetime.now(UTC).isoformat(),
             }
-        except Exception as e:  # после всех ретраев: лог + last_results, сервис живёт
+        except Exception as e:  # after all retries: log + last_results, service stays up
             logger.error("job %s failed after retries: %s", entry.name, e, exc_info=True)
             self.last_results[entry.name] = {
                 "status": "failed", "error": str(e),
@@ -116,7 +116,7 @@ def serve(manifest_path: str) -> None:
     from norn_core.config import get_settings
     from norn_scheduler.api import create_app
 
-    manifest = SchedulerManifest.from_yaml(manifest_path)  # fail-fast при невалидном
+    manifest = SchedulerManifest.from_yaml(manifest_path)  # fail-fast if invalid
     sched = NornScheduler(manifest)
     cfg = get_settings().scheduler
     sched.start()

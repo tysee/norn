@@ -1,16 +1,16 @@
 """
 packages/agent/src/norn_agent/agent_worker.py
 
-HTTP-воркер LLM-судьи зависимостей — зеркало паттерна timesfm_worker: тонкая
-FastAPI-граница вокруг judge_dependencies, чтобы судью можно было включать и
-выключать как отдельный контейнер. Внутри воркера judge зовётся с ЯВНЫМ агентом
-(никогда не через worker_url — иначе рекурсия). LLMUnavailable -> 503: клиентская
-сторона маппит любой не-200 обратно в LLMUnavailable (explained=false).
+HTTP worker for the LLM dependency judge — a mirror of the timesfm_worker pattern: a
+thin FastAPI boundary around judge_dependencies so the judge can be switched on and
+off as a separate container. Inside the worker, judge is called with an EXPLICIT agent
+(never via worker_url — otherwise recursion). LLMUnavailable -> 503: the client side
+maps any non-200 back into LLMUnavailable (explained=false).
 
-Методы:
-- JudgeRequest — pydantic-схема тела (measurements/meta/prior_measurements).
-- create_app(agent=None) -> FastAPI — POST /judge и GET /health; agent
-  инъектируется в тестах, по умолчанию строится из config/agent.yml.
+Members:
+- JudgeRequest — pydantic schema for the body (measurements/meta/prior_measurements).
+- create_app(agent=None) -> FastAPI — POST /judge and GET /health; agent is
+  injected in tests, by default built from config/agent.yml.
 """
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ class JudgeRequest(BaseModel):
 
 def create_app(agent=None) -> FastAPI:
     app = FastAPI(title="norn-agent-worker")
-    # один агент на процесс: модель-объект строится из config/agent.yml лениво,
-    # но до первого запроса — fail-fast на битом конфиге при старте.
+    # one agent per process: the model object is built from config/agent.yml lazily,
+    # but before the first request — fail-fast on a broken config at startup.
     judge_agent = agent if agent is not None else build_agent()
 
     @app.get("/health")

@@ -1,37 +1,37 @@
-%% Norn — архитектура sidecar к Lightdash
+%% Norn — sidecar architecture for Lightdash
 flowchart TB
 
-    analyst([Аналитик])
-    cli["CLI / orchestrator<br/>norn up — одна команда"]
+    analyst([Analyst])
+    cli["CLI / orchestrator<br/>norn up — one command"]
 
-    subgraph monorepo["Моно-репо: tysee/norn"]
+    subgraph monorepo["Monorepo: tysee/norn"]
         direction TB
-        agent["packages/agent<br/>Агент анализа зависимостей<br/>(pi.dev)"]
-        forecast["packages/forecast<br/>Сервис прогнозов<br/>(TimesFM 2.5 worker)"]
-        mcp["MCP server<br/>(FastMCP, агентский интерфейс)"]
+        agent["packages/agent<br/>Dependency-analysis agent<br/>(pi.dev)"]
+        forecast["packages/forecast<br/>Forecast service<br/>(TimesFM 2.5 worker)"]
+        mcp["MCP server<br/>(FastMCP, agent interface)"]
         tfmworker["TimesFM worker<br/>(FastAPI, torch container)"]
-        integ["packages/integration<br/>Обвязка: dbt + Lightdash + ClickHouse"]
-        meta[("addon Postgres<br/>метаданные: jobs, runs,<br/>deps, metric_def")]
+        integ["packages/integration<br/>Glue: dbt + Lightdash + ClickHouse"]
+        meta[("addon Postgres<br/>metadata: jobs, runs,<br/>deps, metric_def")]
     end
 
-    subgraph existing["Существующий стек (не форкаем)"]
+    subgraph existing["Existing stack (not forked)"]
         direction TB
-        lightdash["Lightdash<br/>BI / дашборды / semantic"]
-        ldpg[("Lightdash Postgres<br/>проекты, dbt-метрики")]
+        lightdash["Lightdash<br/>BI / dashboards / semantic"]
+        ldpg[("Lightdash Postgres<br/>projects, dbt metrics")]
         ch[("ClickHouse<br/>marts, forecast tables,<br/>actual_vs_forecast")]
-        dbt["dbt project<br/>метрики и grain"]
+        dbt["dbt project<br/>metrics and grain"]
     end
 
-    llm["LLM-провайдер<br/>объяснение зависимостей"]
+    llm["LLM provider<br/>dependency explanation"]
 
     analyst --> cli
     cli --> integ
     cli --> forecast
     cli --> agent
 
-    integ -->|читает определения метрик| ldpg
-    integ -->|строит/читает marts| ch
-    integ -->|регистрирует forecast-модели| dbt
+    integ -->|reads metric definitions| ldpg
+    integ -->|builds/reads marts| ch
+    integ -->|registers forecast models| dbt
     dbt --> ch
 
     forecast -->|extract series| ch
@@ -42,13 +42,13 @@ flowchart TB
     agent -->|MCP tools| mcp
     forecast --> meta
 
-    agent -->|читает ряды| ch
-    agent -->|корреляции + лаги| meta
-    agent -->|объяснение| llm
+    agent -->|reads series| ch
+    agent -->|correlations + lags| meta
+    agent -->|explanation| llm
 
     lightdash -->|actual vs forecast| ch
     lightdash --> ldpg
-    analyst -->|смотрит дашборд| lightdash
+    analyst -->|views dashboard| lightdash
 
     classDef ours fill:#E8C8BA,stroke:#B8553E,color:#1C1814;
     classDef ext fill:#EFE6CF,stroke:#8C8275,color:#1C1814;

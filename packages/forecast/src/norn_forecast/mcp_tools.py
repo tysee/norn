@@ -1,43 +1,44 @@
 """
 packages/forecast/src/norn_forecast/mcp_tools.py
 
-Логика инструментов MCP-слоя платформы norn (агентский интерфейс) без самого
-протокола. Чистые функции «запрос -> ответ»: на вход ClickHouse-клиент и
-параметры, на выход JSON-совместимые dict'ы. Читают контракт-таблицы forecast_*
-и dependency-таблицы, всегда от свежайшего прогона. Обёртка FastMCP, которая
-регистрирует эти функции как сетевые инструменты, живёт в mcp_server.py.
+Logic for the MCP-layer tools of the norn platform (agent interface) without the
+protocol itself. Pure "request -> response" functions: a ClickHouse client and
+parameters in, JSON-compatible dicts out. They read the forecast_* contract
+tables and the dependency tables, always from the freshest run. The FastMCP
+wrapper that registers these functions as network tools lives in mcp_server.py.
 
-Методы:
-- get_forecast(client, metric, segment, horizon=None) -> list[dict] — точки
-  последнего прогноза (y_hat + p10/p50/p90).
+Methods:
+- get_forecast(client, metric, segment, horizon=None) -> list[dict] — points of
+  the latest forecast (y_hat + p10/p50/p90).
 - get_expected_range(client, metric, segment, horizon=None) -> list[dict] —
-  ожидаемый коридор p10..p90 и его ширина по шагам.
+  expected p10..p90 range and its width per step.
 - classify_levels_vs_band(client, metric, segment, levels, horizon=None) ->
-  list[dict] — где заданные уровни относительно коридора (below/in/above).
-- get_band_position(client, metric, segment, current_value) -> dict — попадает ли
-  текущее значение в коридор ближайшего горизонта.
-- get_calibration(client, metric, segment) -> dict — последние метрики качества
-  (coverage/wape/mape/bias) из forecast_segment, плюс флаг is_sparse:bool
-  (разреженность ряда — калибровка ненадёжна, относиться к интервалам осторожно).
-- get_run_status(client) -> dict — статус/метаданные последнего прогона целиком
-  (forecast_run): модель, тайминги, segments_total/skipped, error. Глобально, по
-  started_at DESC; пустая таблица -> {available:false}.
-- get_forecast_status(client, metric, segment) -> dict — свежесть+статус прогноза
-  КОНКРЕТНОГО ряда: последняя точка (last_created_at/last_forecast_ts) и мета её
-  прогона (status/model/тайминги/error); нет точек -> {available:false}.
-- list_metrics(client) -> list[str] — discovery: доступные метрики (DISTINCT
-  metric_name из forecast_point, отсортированы).
-- list_segments(client, metric) -> list[str] — discovery: сегменты с прогнозом для
-  метрики (DISTINCT segment_key из forecast_point, отсортированы).
+  list[dict] — where the given levels sit relative to the range (below/in/above).
+- get_band_position(client, metric, segment, current_value) -> dict — whether the
+  current value falls inside the nearest-horizon range.
+- get_calibration(client, metric, segment) -> dict — latest quality metrics
+  (coverage/wape/mape/bias) from forecast_segment, plus the is_sparse:bool flag
+  (a sparse series — calibration is unreliable, treat the intervals with caution).
+- get_run_status(client) -> dict — status/metadata of the latest forecast run as a
+  whole (forecast_run): model, timings, segments_total/skipped, error. Global, by
+  started_at DESC; empty table -> {available:false}.
+- get_forecast_status(client, metric, segment) -> dict — freshness+status of the
+  forecast for a SPECIFIC series: last point (last_created_at/last_forecast_ts)
+  and the metadata of its run (status/model/timings/error); no points ->
+  {available:false}.
+- list_metrics(client) -> list[str] — discovery: available metrics (DISTINCT
+  metric_name from forecast_point, sorted).
+- list_segments(client, metric) -> list[str] — discovery: segments with a forecast
+  for the metric (DISTINCT segment_key from forecast_point, sorted).
 - get_dependencies(client, target_segment, metric) -> list[dict] — lead/lag
-  зависимости на целевой сегмент: числовые методы + вердикт агента. Якорится на
-  metric_dependency (пишется всегда); вердикт LLM подмешивается LEFT-join'ом,
-  флаг explained:bool. При деградации LLM (нет объяснения) числовые методы всё
-  равно видны, а is_real=None / explanation="".
+  dependencies on the target segment: numeric methods + the agent's verdict.
+  Anchored on metric_dependency (always written); the LLM verdict is mixed in via
+  a LEFT join, flag explained:bool. On LLM degradation (no explanation) the numeric
+  methods are still visible, while is_real=None / explanation="".
 - get_dependency_history(client, target_segment, source_segment, metric, limit=20)
-  -> list[dict] — хронология одной зависимости (улики + решение по каждому прогону).
-Внутренние помощники:
-- _latest_run_id(client, metric, segment) -> str | None — id свежайшего прогноза.
+  -> list[dict] — history of a single dependency (evidence + decision per run).
+Internal helpers:
+- _latest_run_id(client, metric, segment) -> str | None — id of the freshest forecast.
 """
 from __future__ import annotations
 
@@ -55,7 +56,7 @@ def _latest_run_id(client: Client, metric: str, segment: str) -> str | None:
 
 
 def get_run_status(client) -> dict:
-    """Последний прогон прогноза целиком (forecast_run), глобально."""
+    """Latest forecast run as a whole (forecast_run), global."""
     rows = client.query(
         "SELECT forecast_run_id, forecast_job, status, model_name, model_version, "
         "started_at, finished_at, segments_total, segments_skipped, error "
@@ -74,7 +75,7 @@ def get_run_status(client) -> dict:
 
 
 def get_forecast_status(client, metric: str, segment: str) -> dict:
-    """Свежесть+статус прогноза конкретного ряда: последняя точка -> её прогон."""
+    """Freshness+status of a specific series' forecast: last point -> its run."""
     run_id = _latest_run_id(client, metric, segment)
     if run_id is None:
         return {"available": False}
@@ -213,7 +214,7 @@ def get_calibration(client: Client, metric: str, segment: str) -> dict:
 
 
 def list_metrics(client) -> list[str]:
-    """Доступные для прогноза метрики (DISTINCT из forecast_point)."""
+    """Metrics available for forecasting (DISTINCT from forecast_point)."""
     rows = client.query(
         "SELECT DISTINCT metric_name FROM forecast_point ORDER BY metric_name"
     ).result_rows
@@ -221,7 +222,7 @@ def list_metrics(client) -> list[str]:
 
 
 def list_segments(client, metric: str) -> list[str]:
-    """Сегменты с прогнозом для метрики (DISTINCT из forecast_point)."""
+    """Segments with a forecast for the metric (DISTINCT from forecast_point)."""
     rows = client.query(
         "SELECT DISTINCT segment_key FROM forecast_point WHERE metric_name=%(m)s "
         "ORDER BY segment_key",
@@ -231,7 +232,7 @@ def list_segments(client, metric: str) -> list[str]:
 
 
 def get_dependencies(client, target_segment: str, metric: str) -> list[dict]:
-    # --- якорь на metric_dependency (пишется всегда), а не на объяснение LLM ---
+    # --- anchor on metric_dependency (always written), not on the LLM explanation ---
     run = client.query(
         "SELECT analysis_run_id FROM metric_dependency "
         "WHERE target_segment=%(t)s AND metric_name=%(m)s "
@@ -284,7 +285,7 @@ def get_dependency_history(
     client, target_segment: str, source_segment: str, metric: str, limit: int = 20
 ) -> list[dict]:
     """Chronological log of a dependency: each past run's evidence + the agent's decision."""
-    # --- последние N прогонов по паре источник->цель (новые первыми) ---
+    # --- last N runs for the source->target pair (newest first) ---
     runs = client.query(
         "SELECT analysis_run_id, is_real, confidence, lag, direction, change_note, created_at "
         "FROM dependency_explanation "
@@ -293,7 +294,7 @@ def get_dependency_history(
         parameters={"t": target_segment, "s": source_segment, "m": metric},
     ).result_rows
 
-    # --- по каждому прогону: решение агента + числовые методы той же эпохи ---
+    # --- per run: the agent's decision + numeric methods from the same epoch ---
     history = []
     for run in runs:
         run_id = run[0]

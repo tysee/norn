@@ -1,14 +1,14 @@
 """
 packages/scheduler/src/norn_scheduler/manifest.py
 
-Контракт манифеста jobs.yml встроенного шедулера: какие norn-джобы запускать,
-по какому cron-расписанию и с какими ретраями. Манифест — единственный источник
-расписания (schedule: в джоб-YAML остаётся подсказкой и игнорируется здесь).
+jobs.yml manifest contract for the built-in scheduler: which norn jobs to run,
+on what cron schedule and with what retries. The manifest is the single source
+of the schedule (schedule: in the job YAML stays a hint and is ignored here).
 
-Классы:
-- ManifestJob — одна запись: name/action/job/schedule (+ retries/enabled).
-- SchedulerManifest — список записей; from_yaml() с fail-fast валидацией
-  (уникальные имена, валидный cron, известный action).
+Classes:
+- ManifestJob — one entry: name/action/job/schedule (+ retries/enabled).
+- SchedulerManifest — list of entries; from_yaml() with fail-fast validation
+  (unique names, valid cron, known action).
 """
 from __future__ import annotations
 
@@ -23,9 +23,9 @@ from pydantic import BaseModel, field_validator, model_validator
 class ManifestJob(BaseModel):
     name: str
     action: Literal["forecast", "calibrate", "deps"]
-    job: str                      # путь к существующему джоб-YAML (ForecastJob/DependencyJob)
-    schedule: str                 # cron (5 полей); манифест главнее хинта в джоб-YAML
-    retries: int | None = None    # None -> дефолт из config/scheduler.yml
+    job: str                      # path to an existing job YAML (ForecastJob/DependencyJob)
+    schedule: str                 # cron (5 fields); manifest overrides the hint in the job YAML
+    retries: int | None = None    # None -> default from config/scheduler.yml
     enabled: bool = True
 
     @field_validator("schedule")

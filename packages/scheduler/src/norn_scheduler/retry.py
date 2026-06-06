@@ -1,4 +1,4 @@
-"""Экспоненциальные ретраи вокруг одного запуска джобы (sleep инъектируется для тестов)."""
+"""Exponential retries around a single job run (sleep is injected for tests)."""
 from __future__ import annotations
 
 import logging

@@ -1,16 +1,17 @@
 """
 packages/forecast/src/norn_forecast/mcp_server.py
 
-MCP-сервер платформы norn (агентский интерфейс) поверх ClickHouse-контракта.
-Тонкая обёртка FastMCP над чистыми функциями mcp_tools: регистрирует их как
-сетевые инструменты, прокидывая общий ClickHouse-клиент и оставляя всю логику в
-mcp_tools. Так агент (на Pi или удалённо) получает прогнозы, коридоры, калибровку
-и зависимости по сети. Хост/порт берутся из конфига mcp.
+MCP server of the norn platform (agent interface) on top of the ClickHouse
+contract. A thin FastMCP wrapper over the pure mcp_tools functions: it registers
+them as network tools, passing through a shared ClickHouse client and leaving all
+logic in mcp_tools. This is how an agent (on the Pi or remote) obtains forecasts,
+ranges, calibration and dependencies over the network. Host/port come from the
+mcp config.
 
-Методы:
-- build_server(client=None) -> FastMCP — собирает сервер и регистрирует
-  инструменты из TOOL_NAMES (клиент по умолчанию — get_client()).
-- TOOL_NAMES — имена зарегистрированных инструментов (7 шт.).
+Methods:
+- build_server(client=None) -> FastMCP — assembles the server and registers the
+  tools from TOOL_NAMES (default client — get_client()).
+- TOOL_NAMES — names of the registered tools (7).
 """
 from __future__ import annotations
 

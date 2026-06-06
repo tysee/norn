@@ -1,12 +1,12 @@
 """
 packages/forecast/src/norn_forecast/covariates.py
 
-Сборка ковариат для прогноза: резолв спецификаций (явные из job + опц. из подтверждённых
-зависимостей) и построение выровненного по таймстемпам массива лидера на контекст+горизонт.
+Building covariates for a forecast: resolving specs (explicit ones from the job + optionally from confirmed
+dependencies) and constructing a timestamp-aligned leader array over context+horizon.
 
-Методы:
+Methods:
 - resolve_covariate_specs(client, job, target_segment) -> list[CovariateSpec]
-- covariate_series(client, mart, metric, segment, n) -> (ts[], vals[]) — ряд лидера из long-mart
+- covariate_series(client, mart, metric, segment, n) -> (ts[], vals[]) — leader series from the long mart
 - build_covariate_array(target_ts, source_ts, source_vals, lag, horizon, step, policy) -> list[float] | None
 """
 from __future__ import annotations

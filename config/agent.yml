@@ -1,21 +1,21 @@
 # config/agent.yml
-# Параметры подсистемы анализа зависимостей платформы norn: какая LLM формирует
-# объяснение, как глубоко искать lead/lag-связи и какими статистическими методами.
-# Ключи к LLM-провайдеру сюда не кладутся — они переопределяются через переменные окружения.
+# Parameters of the norn platform's dependency-analysis subsystem: which LLM produces
+# the explanation, how deeply to search for lead/lag relationships, and which statistical methods to use.
+# LLM-provider keys are not placed here — they are overridden via environment variables.
 
-# LLM-провайдер dependency-агента. Дефолт — локальная Ollama (без облачных креденшелов).
-# Секреты — ТОЛЬКО в env: openai-api->OPENAI_API_KEY; openai-oauth->NORN_OPENAI_OAUTH_TOKEN;
-#                         openrouter->OPENROUTER_API_KEY; anthropic-api->ANTHROPIC_API_KEY; ollama->нет.
+# LLM provider for the dependency agent. Default is local Ollama (no cloud credentials).
+# Secrets — ONLY in env: openai-api->OPENAI_API_KEY; openai-oauth->NORN_OPENAI_OAUTH_TOKEN;
+#                         openrouter->OPENROUTER_API_KEY; anthropic-api->ANTHROPIC_API_KEY; ollama->none.
 provider: ollama
 model: gemma4:e2b   # openai-api: gpt-4o-mini | openrouter: anthropic/claude-sonnet-4-5 | anthropic-api: claude-sonnet-4-5
-base_url: http://localhost:11434/v1   # ollama endpoint (явно, без фолбека в коде); cloud -> null
+base_url: http://localhost:11434/v1   # ollama endpoint (explicit, no fallback in code); cloud -> null
 output_mode: native                   # native (ollama/json-schema) | tool (cloud) | prompted
-max_lag: 10                            # максимальный сдвиг (lag), в шагах ряда, проверяемый при поиске связей
-context_length: 512                    # длина исторического окна (число точек), подаваемого в анализ
-methods: [lagged_cross_correlation, granger]  # статистические методы оценки зависимостей
-granger_min_points_factor: 3           # множитель: минимум точек для теста Грейнджера = factor * max_lag
-# доля значимости Granger: p-value ниже -> зависимость считается значимой (source_leads)
+max_lag: 10                            # maximum shift (lag), in series steps, checked when searching for relationships
+context_length: 512                    # length of the historical window (number of points) fed into the analysis
+methods: [lagged_cross_correlation, granger]  # statistical methods for estimating dependencies
+granger_min_points_factor: 3           # multiplier: minimum points for the Granger test = factor * max_lag
+# Granger significance level: p-value below this -> dependency is considered significant (source_leads)
 granger_significance: 0.05
-# URL agent-воркера (LLM-судья как отдельный сервис). null = судья in-process.
-# Воркер недоступен/выключен -> LLMUnavailable -> explained=false (деградация, не ошибка).
+# URL of the agent worker (LLM judge as a separate service). null = judge runs in-process.
+# Worker unavailable/disabled -> LLMUnavailable -> explained=false (degradation, not an error).
 worker_url: null

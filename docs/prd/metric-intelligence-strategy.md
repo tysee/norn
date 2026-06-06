@@ -1,274 +1,274 @@
-# Norn — стратегия open-source проекта: forecasting-слой и поиск зависимостей метрик
+# Norn — open-source project strategy: forecasting layer and metric-dependency discovery
 
-_Проект: **Norn** (репозиторий `tysee/norn`, дистрибутив `norn-ai`, домен norn.dev). Норны в скандинавской мифологии плетут нити судьбы (= зависимости метрик) и определяют, что будет (= прогноз). Дата: 29 мая 2026. Применены фреймворки product-find-opportunity (JTBD), competitive-analysis, challenge-idea._
-
----
-
-## 1. Резюме (TL;DR)
-
-Идея: open-source система, которую можно self-host, которая (1) подключается к источникам метрик, (2) прогнозирует временные ряды на foundation-моделях (TimesFM / Chronos / Moirai), (3) находит зависимости между метриками с помощью LLM, и (4) отдаёт всё это наружу через MCP-интерфейс, чтобы любой LLM-агент мог получать прогнозы и отвечать на вопросы по метрикам на естественном языке.
-
-Главный вывод анализа: рынок распадается на два полюса, между которыми есть незакрытая ниша.
-
-- **Foundation-модели и библиотеки** (TimesFM, Chronos-2, Moirai 2.0, Nixtla, Darts, Prophet) — это модели и Python-библиотеки. Они не являются разворачиваемой системой, не имеют MCP-интерфейса и не делают автоматический поиск зависимостей между метриками.
-- **Observability-вендоры** (Datadog, Grafana, New Relic, Sentry, PagerDuty, Honeycomb) уже выпустили официальные MCP-серверы — это самая «насыщенная» MCP-категория. Но их MCP в основном даёт LLM доступ к существующим дашбордам и запросам, а не к forecasting-движку + причинно-корреляционному анализу как к открытому вендор-нейтральному слою.
-
-**Незакрытая ниша (wedge):** вендор-нейтральный forecasting-слой для современного data-стека (dbt + DWH + BI), который прогнозирует бизнес-метрики и объясняет, что на них влияет, а позже отдаёт это наружу через MCP. Уникальный дифференциатор — LLM-driven поиск зависимостей и нарративные ответы, а не очередной forecasting-API.
-
-**Инвариант платформы.** norn — вендор-нейтральная, домен-АГНОСТИЧНАЯ forecasting-платформа: мультисегментный прогноз метрик и поиск зависимостей поверх любого warehouse через generic-контракт (`forecast_point`/`forecast_segment`), конфигурируемые модель/провайдер/БД и MCP-контракт. Платформенный код (`packages/*`, `cli`) НЕ несёт доменных дефолтов — ни встроенных метрик, символов, размерностей, форматов ingestion, дашбордов, промптов, ни выбора LLM-модели. Вся доменная специфика живёт в отдельном инстанс-репо (`norn-crypto-instance` — первый dogfood-инстанс, подключается submodule). GTM-фокус (первый целевой вертикал) — delivery/marketplace/e-commerce: это рыночная стратегия, а НЕ платформенный дефолт. Любой конкретный домен в этом документе (delivery-KPI вроде delivered_orders/GMV, крипто-символы BTC/TON, размерности, трансформации, выбор модели) — помеченный ПРИМЕР, указывающий на инстанс/вертикал, а не требование платформы; детали домена — в инстанс-репо.
-
-**Instance pattern / GTM (как читать этот документ).** Три уровня строго разделены:
-
-- **Платформа** (`packages/*`, `cli`) — домен-агностичный движок и generic-контракт; не хардкодит ни одного домена.
-- **GTM-бичхед вертикал** (delivery/marketplace/e-commerce) — рыночная стратегия выхода: первый целевой вертикал для нарратива, контента и валидации. Это выбор go-to-market, а не предмет, встроенный в платформу.
-- **Dogfood-инстанс** (`norn-crypto-instance`, подключается submodule) — конкретная рабочая реализация на реальных данных автора; держит доменную специфику (метрики, символы, размерности, ingestion, дашборды, промпты, выбор модели). Полные доменные детали — в инстанс-репо.
-
-Найденные агентом зависимости заходят в прогноз как generic-ковариаты (XReg), а не как доменно-специфичные ряды.
-
-**Два слоя по природе метрик (важно):** прогнозирование бывает _операционным_ (realtime, короткий горизонт 5–60 мин, alerting — там уместен Prometheus/TSDB) и _аналитическим_ (бизнес-метрики по часам/дням во множестве разрезов — там нужен OLAP/DWH). Бизнес-аналитика почти всегда хочет много dimensions (пример delivery-бичхеда, не дефолт платформы: `city × store × merchant × courier_type × customer_tier × hour`), и это взрывает кардинальность, под которую Prometheus не проектировался. Поэтому **аналитический слой строится на DWH (ClickHouse/Postgres → BigQuery/Snowflake)**, а Prometheus остаётся узким операционным коннектором.
-
-**Расширение, а не платформа:** MVP не строит свой BI-движок. Он встраивается в существующий стек `dbt → ClickHouse → Lightdash` как forecasting add-on (TimesFM-воркер пишет forecast-таблицы обратно в DWH, Lightdash рисует actual-vs-forecast). Это даёт быстрый proof-of-value без разработки dashboard-движка.
-
-**Фокус проекта — три слоя (а остальное переиспользуем).** Lightdash (open-source) уже закрывает BI и исследование метрик; dbt — трансформации; ClickHouse — хранилище. Поэтому собственный фокус и IP проекта — ровно три слоя:
-
-1. **Слой описания метрик** — декларативное описание прогнозируемых метрик (grain, dimensions, связи), поверх dbt-определений. В MVP его зерно — YAML forecast-job.
-2. **Движок поиска корреляций/зависимостей** — что на что влияет, с лагом и направлением (Фаза 1, moat).
-3. **Прогнозирование** — foundation-модели (TimesFM) поверх warehouse (MVP).
-
-Явная граница: **BI и дашборды — это Lightdash, трансформации — dbt, хранилище — ClickHouse. Мы их не переписываем.**
-
-**Рекомендация по сегменту (GTM-бичхед вертикал):** приоритет выхода на рынок — **Data / Analytics-инженеры и BizOps в data-heavy вертикалях (доставка/маркетплейс/e-commerce)**, которые прогнозируют бизнес-KPI (GMV, delivered_orders, retention, cancellations — _примеры delivery-бичхеда, не дефолты платформы_) с множеством разрезов. Это выбор первого целевого вертикала, а не предмет, встроенный в платформу. Здесь сильная OSS-культура (dbt, ClickHouse, Lightdash) и понятный путь к open-core. Operational/SRE (Prometheus) — вторичный realtime-слой.
-
-**Бизнес-модель:** open-source first. **Norn** стартует как личный OSS-проект (`tysee/norn`): автор — customer-zero на собственных данных доставки, валидация через dogfood (concierge-ноутбук), а не через интервью. Open-core — опциональное будущее, не драйвер старта: бесплатное ядро (DWH-коннекторы, forecasting-воркер, поиск зависимостей, MCP-сервер, dbt-модели/интеграция с Lightdash); платный слой (cloud, RBAC/SSO, масштаб, fine-tuning) — позже, если появится спрос за пределами своей команды.
+_Project: **Norn** (repository `tysee/norn`, distribution `norn-ai`, domain norn.dev). In Norse mythology the Norns weave the threads of fate (= metric dependencies) and determine what will be (= the forecast). Date: May 29, 2026. Frameworks applied: product-find-opportunity (JTBD), competitive-analysis, challenge-idea._
 
 ---
 
-## 2. Контекст рынка
+## 1. Summary (TL;DR)
 
-### 2.1 Урок Uber DeepETT — что подтверждает статья
+The idea: an open-source, self-hostable system that (1) connects to metric sources, (2) forecasts time series on foundation models (TimesFM / Chronos / Moirai), (3) discovers dependencies between metrics using an LLM, and (4) exposes all of this externally through an MCP interface, so that any LLM agent can obtain forecasts and answer questions about metrics in natural language.
 
-Статья Uber о DeepETT (graph-aware transformer для прогнозирования трафика, май 2026) — это не про MCP/LLM, но даёт стратегический аргумент позиционирования:
+Main conclusion of the analysis: the market splits into two poles, with an unaddressed niche in between.
 
-- **Эффект масштаба downstream.** Маленькие улучшения метрики upstream компаундируются вниз по стеку. Для проекта это аргумент позиционирования: forecasting-слой сидит выше алертинга, capacity-планирования и принятия решений.
+- **Foundation models and libraries** (TimesFM, Chronos-2, Moirai 2.0, Nixtla, Darts, Prophet) are models and Python libraries. They are not a deployable system, they have no MCP interface, and they do not automatically discover dependencies between metrics.
+- **Observability vendors** (Datadog, Grafana, New Relic, Sentry, PagerDuty, Honeycomb) have already shipped official MCP servers — this is the most "saturated" MCP category. But their MCP mostly gives the LLM access to existing dashboards and queries, not to a forecasting engine + causal-correlation analysis as an open, vendor-neutral layer.
 
-Инженерные уроки той же статьи (контракты раньше модели, непрерывная калибровка, предагрегация ради предсказуемой latency) — это дизайн-ограничения исполнения, а не стратегия; вынесены в `mvp-prd-backlog.md` → «Design constraints / NFR».
+**Unaddressed niche (wedge):** a vendor-neutral forecasting layer for the modern data stack (dbt + DWH + BI) that forecasts business metrics and explains what drives them, and later exposes this externally via MCP. The unique differentiator is LLM-driven dependency discovery and narrative answers, not yet another forecasting API.
 
-### 2.2 Foundation-модели временных рядов созрели
+**Platform invariant.** norn is a vendor-neutral, domain-AGNOSTIC forecasting platform: multi-segment metric forecasting and dependency discovery on top of any warehouse via a generic contract (`forecast_point`/`forecast_segment`), with configurable model/provider/DB and an MCP contract. The platform code (`packages/*`, `cli`) carries NO domain defaults — no built-in metrics, symbols, dimensions, ingestion formats, dashboards, prompts, or choice of LLM model. All domain specifics live in a separate instance repo (`norn-crypto-instance` — the first dogfood instance, attached as a submodule). The GTM focus (first target vertical) is delivery/marketplace/e-commerce: this is a market strategy, NOT a platform default. Any concrete domain in this document (delivery KPIs such as delivered_orders/GMV, crypto symbols BTC/TON, dimensions, transformations, model choice) is a labeled EXAMPLE pointing at an instance/vertical, not a platform requirement; the domain details live in the instance repo.
 
-За 2025 произошёл качественный скачок: time-series foundation models стали маленькими, быстрыми и зеро-шотными.
+**Instance pattern / GTM (how to read this document).** Three layers are strictly separated:
 
-- **TimesFM 2.5** (Google, сентябрь 2025) — вернул себе топ при всего 200M параметрах против 500M у предшественника; октябрьский релиз добавил univariate, multivariate и covariate-режимы. Это та модель, на которую опирается репозиторий проекта.
-- **Chronos-2** (Amazon) — encoder-only с group-attention (cross-series внимание внутри группы), >300 прогнозов/сек на одной GPU, миллионы загрузок на Hugging Face, нативная интеграция с SageMaker / AutoGluon — самая сильная документация и комьюнити.
-- **Moirai 2.0** (Salesforce, август 2025) — decoder-only, в ~30 раз меньше параметров против 1.0-Large при лучших бенчмарках, нативно работает с any-variate рядами и моделирует cross-series зависимости (то, что стандартный TimesFM не умеет).
-- **TimeGPT** (Nixtla) — проприетарный, доступ по API; SDK открыт (Apache 2.0).
+- **Platform** (`packages/*`, `cli`) — the domain-agnostic engine and generic contract; it hardcodes no domain.
+- **GTM beachhead vertical** (delivery/marketplace/e-commerce) — the go-to-market strategy: the first target vertical for the narrative, content, and validation. This is a go-to-market choice, not something baked into the platform.
+- **Dogfood instance** (`norn-crypto-instance`, attached as a submodule) — a concrete working implementation on the author's real data; it holds the domain specifics (metrics, symbols, dimensions, ingestion, dashboards, prompts, model choice). Full domain details live in the instance repo.
 
-**Вывод:** ядро прогнозирования теперь — commodity. Дифференциация уходит выше: в систему вокруг моделей (ingestion, оркестрация, объяснение, интерфейс).
+Dependencies discovered by the agent enter the forecast as generic covariates (XReg), not as domain-specific series.
 
-### 2.3 MCP стал стандартом доступа агентов к телеметрии
+**Two layers by the nature of metrics (important):** forecasting can be _operational_ (realtime, short horizon 5–60 min, alerting — where Prometheus/TSDB is appropriate) or _analytical_ (business metrics by hour/day across many slices — where OLAP/DWH is needed). Business analytics almost always wants many dimensions (delivery-beachhead example, not a platform default: `city × store × merchant × courier_type × customer_tier × hour`), and that explodes cardinality in a way Prometheus was never designed for. Therefore the **analytical layer is built on a DWH (ClickHouse/Postgres → BigQuery/Snowflake)**, while Prometheus remains a narrow operational connector.
 
-Datadog, Grafana, New Relic, Sentry, PagerDuty, Honeycomb — все выпустили официальные first-party MCP-серверы. Это самая высокая доля официального принятия среди всех MCP-категорий. Эти серверы дают LLM доступ к логам, метрикам, трейсам и алертам как к вызываемым инструментам.
+**An extension, not a platform:** the MVP does not build its own BI engine. It plugs into the existing `dbt → ClickHouse → Lightdash` stack as a forecasting add-on (the TimesFM worker writes forecast tables back into the DWH, Lightdash renders actual-vs-forecast). This delivers a fast proof-of-value without building a dashboard engine.
 
-**Но:** они в основном экспонируют существующие запросы и дашборды. Forecasting и автоматический поиск зависимостей между метриками через MCP как открытый вендор-нейтральный слой — пока ничейная территория.
+**Project focus — three layers (and we reuse the rest).** Lightdash (open-source) already covers BI and metric exploration; dbt handles transformations; ClickHouse is the storage. So the project's own focus and IP are exactly three layers:
 
-### 2.4 Размер рынка
+1. **Metric-description layer** — declarative description of the metrics to forecast (grain, dimensions, relations), on top of dbt definitions. In the MVP its seed is the YAML forecast job.
+2. **Correlation/dependency discovery engine** — what influences what, with lag and direction (Phase 1, moat).
+3. **Forecasting** — foundation models (TimesFM) on top of the warehouse (MVP).
 
-Рынок AIOps оценивается по-разному в зависимости от методологии: примерно **$14–19 млрд в 2026** при CAGR от ~15% до ~30%; отдельные отчёты дают и выше. Цифры расходятся, поэтому их стоит брать как порядок величины, а не точную метрику.
+Explicit boundary: **BI and dashboards are Lightdash, transformations are dbt, storage is ClickHouse. We do not rewrite them.**
 
-Важнее тренды, чем абсолютные цифры:
+**Segment recommendation (GTM beachhead vertical):** the go-to-market priority is **Data / Analytics engineers and BizOps in data-heavy verticals (delivery/marketplace/e-commerce)** who forecast business KPIs (GMV, delivered_orders, retention, cancellations — _delivery-beachhead examples, not platform defaults_) across many slices. This is the choice of the first target vertical, not something baked into the platform. There is a strong OSS culture here (dbt, ClickHouse, Lightdash) and a clear path to open-core. Operational/SRE (Prometheus) is a secondary realtime layer.
 
-- Gartner в 2025 переименовал категорию AIOps в «Event Intelligence Solutions» — сигнал смещения фокуса с реактивного мониторинга к предиктивной автоматизации.
-- **71%** организаций, использующих observability, уже используют их AI-функции (рост на 26 п.п. относительно 2024) — спрос на «AI поверх метрик» подтверждён поведением, а не только опросами.
-- Сдвиг бюджета от платформ к сервисам, помогающим «операционализировать» алгоритмы — то есть на интеграцию и внедрение, а не только на модели.
-
----
-
-## 3. Конкурентный ландшафт
-
-### 3.1 Матрица позиционирования сообщений
-
-| Измерение                 | Проект (предлагаемое)                                   | Datadog / Grafana (observability + MCP)     | Nixtla / TimeGPT                   | Darts / Prophet (OSS-библиотеки)    |
-| ------------------------- | ------------------------------------------------------- | ------------------------------------------- | ---------------------------------- | ----------------------------------- |
-| Что это                   | Self-hosted движок прогноза + поиска зависимостей с MCP | SaaS-платформа observability с MCP-доступом | Forecasting API (foundation model) | Python-библиотеки прогноза/аномалий |
-| Ядро ценности             | LLM объясняет и прогнозирует метрики, вендор-нейтрально | Единый мониторинг + AI-функции              | Зеро-шот прогноз по API            | Гибкий тулкит для DS                |
-| Аудитория                 | Platform/SRE + data на открытых стеках                  | Enterprise observability                    | ML/Data-инженеры                   | Data scientists                     |
-| Дифференциатор            | Поиск зависимостей через LLM + MCP-Q&A, self-host       | Полнота стека, экосистема                   | Точность модели, простота API      | Открытость, свобода                 |
-| Развёртывание             | Self-host (OSS) + cloud (open-core)                     | SaaS (в основном)                           | Cloud API                          | pip install                         |
-| Слабость для нашего юзера | —                                                       | Lock-in, данные в SaaS, дорого              | Не система, нет MCP, нет RCA       | Не система, нет MCP, нет UI         |
-
-### 3.2 Карта позиционирования (2×2)
-
-Оси: **«Библиотека/модель → Готовая система»** (горизонталь) и **«Проприетарный SaaS → Open-source self-host»** (вертикаль).
-
-- Верх-лево (OSS, но библиотека): Darts, Prophet, StatsForecast/NeuralForecast, сами foundation-модели.
-- Низ-право (SaaS-система): Datadog, Grafana Cloud, New Relic, Nixtla TimeGPT.
-- **Верх-право (OSS + готовая система) — почти пусто.** Это целевой квадрант проекта: разворачиваемая open-source система с MCP, а не библиотека и не SaaS.
-
-### 3.3 Анализ нарратива и gap
-
-- Observability-вендоры строят нарратив «один пульт для всего стека, теперь с AI». Их «злодей» — фрагментация инструментов. Их уязвимость для нашего юзера — vendor lock-in, отправка данных в SaaS и стоимость.
-- Forecasting-библиотеки строят нарратив «свобода и точность для DS». Их уязвимость — это «кубики», а не система: нет MCP, нет объяснений, нет UI, нет эксплуатации.
-- **Gap проекта:** «Прогноз и объяснение метрик для LLM-агентов — на ваших данных, без вендора. Спросите на естественном языке, что вырастет, что просядет и что на что влияет.»
-
-### 3.4 Ключевые «мины» (battlecard-выжимка)
-
-- Против SaaS: «Где живут ваши метрики и кто их видит? Сколько вы платите за per-host AI-функции?»
-- Против библиотек: «Кто эксплуатирует пайплайн, кто переобучает, как агент это вызывает в проде?»
-- Против self-built: «Кто поддерживает связку foundation-модель + калибровка + MCP-контракт, когда автор уйдёт?»
+**Business model:** open-source first. **Norn** starts as a personal OSS project (`tysee/norn`): the author is customer-zero on their own delivery data, validating through dogfooding (a concierge notebook) rather than through interviews. Open-core is an optional future, not a launch driver: a free core (DWH connectors, forecasting worker, dependency discovery, MCP server, dbt models / Lightdash integration); a paid layer (cloud, RBAC/SSO, scale, fine-tuning) comes later, if demand appears beyond one's own team.
 
 ---
 
-## 4. Карта возможностей (JTBD)
+## 2. Market context
 
-**Scale mode:** solo (ранний open-source проект). Сегментов ≤3, ранжирование словесное.
+### 2.1 The Uber DeepETT lesson — what the article confirms
 
-### 4.1 Постановка бизнес-задачи
+Uber's DeepETT article (a graph-aware transformer for traffic forecasting, May 2026) is not about MCP/LLM, but it provides a strategic positioning argument:
 
-- **Бизнес-задача:** выбрать сегмент и wedge для запуска OSS-проекта с перспективой open-core монетизации.
-- **Решение:** на ком сфокусировать MVP и нарратив, чтобы получить и adoption, и путь к выручке.
-- **Метрика успеха (ранняя):** GitHub-звёзды и активные self-host инсталляции → доля, подключившая MCP к реальному агенту → конверсия в cloud/enterprise.
+- **Downstream scale effect.** Small improvements in an upstream metric compound down the stack. For the project this is a positioning argument: the forecasting layer sits above alerting, capacity planning, and decision-making.
 
-### 4.2 Сегменты × Jobs × текущие решения
+The engineering lessons from the same article (contracts before the model, continuous calibration, pre-aggregation for predictable latency) are execution design constraints, not strategy; they are moved to `mvp-prd-backlog.md` → "Design constraints / NFR".
 
-**Сегмент 1 (GTM-бичхед вертикал) — Data / Analytics-инженеры и BizOps в data-heavy вертикалях (доставка/маркетплейс/e-commerce).**
+### 2.2 Time-series foundation models have matured
 
-- Core Jobs: прогноз бизнес-KPI по часам/дням во множестве разрезов; объяснить драйверы; показать actual-vs-forecast в своём BI. _Примеры метрик delivery-бичхеда: GMV, delivered_orders, cancellations, retention, courier efficiency — это пример вертикала, а не дефолты платформы (для контраста другой вертикал даёт свои KPI: e-commerce — conversion_rate/AOV/returns). Конкретные метрики и размерности живут в инстанс-репо._
-- Big Job: принимать операционно-бизнесовые решения по данным без очереди к data-science команде.
-- Текущие решения: dbt + ClickHouse/BigQuery + Lightdash/Looker/Metabase; Prophet/in-house скрипты; «глазами по дашборду».
-- Критерии: сильная OSS-культура современного data-стека (dbt, ClickHouse, Lightdash); острая боль на high-cardinality forecasting; понятный self-host.
-- Не-сегмент: команды без warehouse/dbt, которым прогноз не нужен дальше одного-двух рядов.
+2025 brought a qualitative leap: time-series foundation models became small, fast, and zero-shot.
 
-**Сегмент 2 (вторичный) — Data / ML-инженеры, встраивающие forecasting в data-платформу.**
+- **TimesFM 2.5** (Google, September 2025) — reclaimed the top spot at just 200M parameters versus the predecessor's 500M; the October release added univariate, multivariate, and covariate modes. This is the model the project's repository relies on.
+- **Chronos-2** (Amazon) — encoder-only with group-attention (cross-series attention within a group), >300 forecasts/sec on a single GPU, millions of downloads on Hugging Face, native integration with SageMaker / AutoGluon — the strongest documentation and community.
+- **Moirai 2.0** (Salesforce, August 2025) — decoder-only, ~30× fewer parameters than 1.0-Large with better benchmarks, natively handles any-variate series and models cross-series dependencies (something the standard TimesFM cannot do).
+- **TimeGPT** (Nixtla) — proprietary, API access; the SDK is open (Apache 2.0).
 
-- Core Jobs: получить надёжный зеро-шот прогноз без обучения; встроить как воркер в пайплайн; объяснить драйверы.
-- Текущие решения: Darts, Nixtla, Prophet, foundation-модели, in-house.
-- Критерии: высокая компетентность, но устают от «склейки кубиков»; потребляют проект как готовый forecasting-воркер.
+**Conclusion:** the forecasting core is now a commodity. Differentiation moves higher: into the system around the models (ingestion, orchestration, explanation, interface).
 
-**Сегмент 3 (вторичный, realtime) — Platform / SRE на открытых стеках (Prometheus / OTel).**
+### 2.3 MCP became the standard for agent access to telemetry
 
-- Core Jobs: операционный прогноз на минуты, alerting, RCA при инциденте. _Примеры рядов delivery-бичхеда: orders_per_minute, active_couriers, ETA deviation — пример вертикала, а не дефолты платформы._
-- Текущие решения: Grafana + Prometheus + ручной разбор; частично Datadog AI.
-- Критерии: ценят self-host и вендор-нейтральность; это узкий realtime-слой, подключается коннектором к Prometheus — не основное хранилище для бизнес-forecasting.
+Datadog, Grafana, New Relic, Sentry, PagerDuty, Honeycomb — all have shipped official first-party MCP servers. This is the highest rate of official adoption among all MCP categories. These servers give the LLM access to logs, metrics, traces, and alerts as callable tools.
 
-### 4.3 Критическая последовательность (для Сегмента 1 — приоритетного)
+**But:** they mostly expose existing queries and dashboards. Forecasting and automatic discovery of dependencies between metrics through MCP as an open, vendor-neutral layer is still no one's territory.
 
-Big Job: принимать бизнес-решения по прогнозу спроса/KPI.
+### 2.4 Market size
 
-1. Сложить факты в warehouse и подготовить метрику нужного grain (dbt) → **done/weak** (dbt+ClickHouse уже есть, но forecastable metric-таблицы готовят руками).
-2. Спрогнозировать многосегментные ряды с интервалами → **missing** (нет готового foundation-воркера поверх warehouse, всё на Prophet/руками).
-3. Показать actual-vs-forecast в своём BI → **missing** (нет стандартного способа писать forecast обратно и рисовать в Lightdash/Looker).
-4. Найти/объяснить, что влияет на метрику (драйверы по dimensions) → **missing** (никто не делает это автоматически и вендор-нейтрально).
-5. Дать LLM-агенту вызвать прогноз/объяснение через MCP → **missing** (вендорские MCP экспонируют запросы, не forecasting+RCA).
+The AIOps market is sized differently depending on methodology: roughly **$14–19B in 2026** at a CAGR from ~15% to ~30%; individual reports give higher figures still. The numbers diverge, so they should be taken as an order of magnitude, not a precise metric.
 
-**Бутылочное горлышко MVP:** шаги 2–3 (прогноз многосегментных рядов + actual-vs-forecast в BI). Шаги 4–5 (зависимости + MCP) — это moat, но он добавляется _после_ доказанной ценности прогноза.
+The trends matter more than the absolute figures:
 
-**Research-гипотеза (доверие):** доверяют ли пользователи LLM-объяснению драйверов настолько, чтобы действовать. _Kill-threshold:_ если на 5–8 интервью отвечают «не доверяю без ручной проверки» — оставляем только корреляции с пометкой неопределённости, объяснение помечаем experimental.
-
-### 4.4 Ценностные механики (кластер: новый продукт / неохваченная работа)
-
-1. **Начать делать неохваченную работу:** автоматический поиск зависимостей между метриками (корреляция + LLM-объяснение лагов/направления). Меняет шаг 3 с missing на done. Риск: ложные корреляции → нужен честный язык неопределённости.
-2. **Подняться на работу выше:** не «дать прогноз» (это commodity), а «ответить, что произойдёт и почему» через MCP. Меняет шаг 4. Риск: качество объяснений LLM.
-3. **Сделать несколько работ одним решением:** прогноз + аномалии + зависимости + Q&A в одной разворачиваемой системе. Снимает «склейку кубиков» для Сегмента 2.
-
-### 4.5 Ранжирование возможностей
-
-1. **Now (платформа-MVP)** — generic forecasting add-on: домен-агностичный движок поверх warehouse и generic-контракт forecast-таблиц (`forecast_point`/`forecast_segment`), записываемых обратно в DWH и рисуемых в BI. Конфигурируемые модель/провайдер/БД — без доменных дефолтов.
-2. **Now (валидация бичхед-инстанса)** — прогнать платформу-MVP на dogfood-инстансе (delivery-бичхед: стек `dbt → ClickHouse → forecast-воркер → forecast-таблицы → Lightdash`) и доказать ценность на реальных KPI вертикала. Доменные метрики/коннекторы/модели — в инстанс-репо. Без данных и сравнения с фактом ценности нет.
-3. **Next** — поиск зависимостей (корреляция + лаг) и LLM-объяснение драйверов. Это moat, добавляется после доказанной ценности прогноза (Research-гипотеза 4.3).
-4. **Next** — MCP-сервер поверх forecast-таблиц и зависимостей (агент спрашивает «что произойдёт и что влияет»).
-5. **Later** — операционный realtime-слой (Prometheus-коннектор, короткий горизонт, алертинг); доп. коннекторы (Postgres → BigQuery/Snowflake).
-6. **Reject (на старте)** — форк/замена Lightdash, свой dashboard-движок, metric-registry UI, Kafka-коннекторы, мультимодельное сравнение. Распыляет фокус.
-
-### 4.6 Кросс-линки
-
-- Сегмент1.«поиск зависимостей при инциденте» → Сегмент3.«что влияет на бизнес-метрику» — одна и та же работа «найти драйверы», разная упаковка. Это основа будущего расширения из инженерного в бизнес-сегмент.
+- In 2025 Gartner renamed the AIOps category to "Event Intelligence Solutions" — a signal of a shift in focus from reactive monitoring to predictive automation.
+- **71%** of organizations using observability already use its AI features (up 26 pp versus 2024) — demand for "AI on top of metrics" is confirmed by behavior, not only surveys.
+- A budget shift from platforms toward services that help "operationalize" algorithms — i.e. toward integration and adoption, not just models.
 
 ---
 
-## 5. Рекомендуемый сегмент и позиционирование
+## 3. Competitive landscape
 
-**Приоритетный сегмент: Data / Analytics-инженеры и BizOps в data-heavy верти­калях (доставка/маркетплейс/e-commerce).** Почему: острая боль на high-cardinality forecasting бизнес-KPI, сильная OSS-культура современного data-стека (dbt/ClickHouse/Lightdash), и встраивание-вместо-замены даёт быстрый proof-of-value. Сегмент 2 (ML-инженеры) — вторичный, потребляют как воркер; Сегмент 3 (SRE/Prometheus) — вторичный realtime-слой.
+### 3.1 Messaging positioning matrix
 
-**Позиционирующее утверждение:**
+| Dimension                  | Project (proposed)                                       | Datadog / Grafana (observability + MCP)     | Nixtla / TimeGPT                   | Darts / Prophet (OSS libraries)     |
+| -------------------------- | ------------------------------------------------------- | ------------------------------------------- | ---------------------------------- | ----------------------------------- |
+| What it is                 | Self-hosted forecast + dependency-discovery engine with MCP | SaaS observability platform with MCP access | Forecasting API (foundation model) | Python forecasting/anomaly libraries |
+| Core value                 | LLM explains and forecasts metrics, vendor-neutrally    | Unified monitoring + AI features            | Zero-shot forecast via API         | Flexible toolkit for DS             |
+| Audience                   | Platform/SRE + data on open stacks                      | Enterprise observability                    | ML/Data engineers                  | Data scientists                     |
+| Differentiator             | Dependency discovery via LLM + MCP Q&A, self-host       | Stack completeness, ecosystem               | Model accuracy, API simplicity     | Openness, freedom                   |
+| Deployment                 | Self-host (OSS) + cloud (open-core)                     | SaaS (mostly)                               | Cloud API                          | pip install                         |
+| Weakness for our user      | —                                                       | Lock-in, data in SaaS, expensive            | Not a system, no MCP, no RCA       | Not a system, no MCP, no UI         |
 
-> Для data- и BizOps-команд на стеке dbt + warehouse + BI проект — это open-source forecasting-слой, который прогнозирует бизнес-метрики во множестве разрезов и объясняет, что на них влияет, прямо в вашем BI (Lightdash) — потому что соединяет foundation-модели (TimesFM) с warehouse-нативным пайплайном и не требует строить новую BI-платформу.
+### 3.2 Positioning map (2×2)
 
-**Категориальная стратегия:** не новая категория и не новый BI, а **расширение современного data-стека**: «forecasting + объяснение метрик как dbt-нативный add-on». Один-два дифференциатора: (1) zero-shot forecasting многосегментных бизнес-рядов поверх warehouse; (2) позже — LLM-поиск зависимостей и MCP-доступ как moat.
+Axes: **"Library/model → Ready-made system"** (horizontal) and **"Proprietary SaaS → Open-source self-host"** (vertical).
 
----
+- Top-left (OSS, but a library): Darts, Prophet, StatsForecast/NeuralForecast, the foundation models themselves.
+- Bottom-right (SaaS system): Datadog, Grafana Cloud, New Relic, Nixtla TimeGPT.
+- **Top-right (OSS + ready-made system) — almost empty.** This is the project's target quadrant: a deployable open-source system with MCP, not a library and not a SaaS.
 
-## 6. Open-source модель (и опциональный open-core)
+### 3.3 Narrative and gap analysis
 
-Норн — open-source first. Монетизация не самоцель: сначала польза автору и adoption в OSS-сообществе data-стека. Open-core ниже — это _возможное_ будущее, если появится внешний спрос, а не условие запуска.
+- Observability vendors build the narrative "one console for the whole stack, now with AI". Their "villain" is tool fragmentation. Their vulnerability for our user is vendor lock-in, sending data to SaaS, and cost.
+- Forecasting libraries build the narrative "freedom and accuracy for DS". Their vulnerability is that they are "building blocks", not a system: no MCP, no explanations, no UI, no operations.
+- **The project's gap:** "Forecasting and explanation of metrics for LLM agents — on your data, without a vendor. Ask in natural language what will rise, what will dip, and what influences what."
 
-**OSS-ядро (бесплатно, Apache 2.0 — как SDK Nixtla, для adoption):**
+### 3.4 Key "landmines" (battlecard digest)
 
-- Warehouse-коннекторы (ClickHouse → Postgres → BigQuery/Snowflake) + опциональный Prometheus для realtime.
-- Forecasting-воркер на foundation-моделях (TimesFM/Chronos/Moirai) с доверительными интервалами и переоценкой калибровки; запись forecast-таблиц обратно в warehouse.
-- dbt-модели и интеграция с Lightdash (actual-vs-forecast), а не свой BI-движок.
-- Поиск зависимостей между метриками (корреляции + LLM-объяснение) — moat-слой.
-- MCP-сервер с чётким контрактом инструментов; single-node разворачивание (Docker/Helm).
-
-**Коммерческий слой (open-core, по образцу Grafana/PostHog):**
-
-- Управляемый cloud (хостинг, обновления, масштаб инференса).
-- Enterprise: RBAC, SSO/SAML, аудит, мультитенантность, долгое хранение, governance/compliance.
-- Масштаб: высоконагруженный инференс, fine-tuning под домен клиента, приоритетная поддержка/SLA.
-- Предиктивный алертинг и интеграции корпоративного уровня.
-
-**Принцип границы (важно для open-core):** в OSS — всё, что нужно одному инженеру/команде, чтобы получить ценность на своих данных. В commercial — то, что нужно организации для масштаба и контроля. Не прятать в платное то, что убивает базовый use-case, иначе сообщество не вырастет.
-
----
-
-## 7. Продуктовый wedge и roadmap
-
-**Фаза 0 — MVP (две части):** _(а) платформа-MVP_ — домен-агностичный forecasting add-on: generic-движок поверх warehouse и generic-контракт forecast-таблиц, который пишет прогноз обратно в DWH и рисуется в существующем BI (вместо строительства своего). _(б) валидация бичхед-инстанса_ — прогнать платформу-MVP на dogfood-инстансе delivery-бичхеда (стек-пример `dbt → ClickHouse → forecast-воркер → forecast-таблица → Lightdash`) и доказать ценность прогноза на реальных KPI вертикала. Доменные детали — в инстанс-репо; жёсткий скоуп, DoD (7 вопросов ценности) и контракты — в `mvp-prd-backlog.md`.
-
-**Фаза 1 — moat (зависимости + MCP):** поиск зависимостей (корреляция + лаг) и LLM-объяснение драйверов с явной неопределённостью; MCP-сервер поверх forecast-таблиц и зависимостей. Здесь добавляется уникальный дифференциатор после доказанной ценности прогноза.
-
-**Фаза 2 — масштаб коннекторов:** Postgres → BigQuery/Snowflake; переоценка калибровки (урок Uber); опциональный Prometheus для операционного realtime-слоя.
-
-**Фаза 3 — операционализация и (опционально) монетизация:** предиктивный алертинг, cloud/enterprise-функции, fine-tuning под домен — только если появится внешний спрос.
-
-### 7.1 Архитектура и моно-репо (для исполнения)
-
-Моно-репо из трёх частей ровно по трём слоям фокуса (integration / forecast / agent) — раскладка, тех-стек и принципы изоляции окружений вынесены в исполнение: `../erd/monorepo-and-data-model.md`, логическая модель — `../erd/erd.mermaid`, компонентная схема — `../erd/architecture.mermaid`. В PRD — указатель оттуда (`mvp-prd-backlog.md` → «Технический контекст»).
+- Against SaaS: "Where do your metrics live and who sees them? How much do you pay for per-host AI features?"
+- Against libraries: "Who operates the pipeline, who retrains, how does the agent call this in production?"
+- Against self-built: "Who maintains the foundation-model + calibration + MCP-contract bundle once the author leaves?"
 
 ---
 
-## 8. Go-to-market и стратегия сообщества
+## 4. Opportunity map (JTBD)
 
-- **Канал = open-source distribution в data-стеке:** GitHub (README с 30-мин «aha»), готовые dbt-модели и Lightdash-дашборды как стартовый пример. Метрика — звёзды и активные инсталляции, затем доля, дошедшая до actual-vs-forecast.
-- **Контент-gap для захвата:** статьи «forecasting бизнес-KPI доставки на TimesFM поверх ClickHouse + Lightdash», «почему Prometheus не для high-cardinality бизнес-forecasting», «actual-vs-forecast в dbt без BI-платформы», «как считать MAPE/WAPE по сегментам». Никто не пишет вендор-нейтрально для dbt/Lightdash аудитории.
-- **Сообщество:** dbt/ClickHouse/Lightdash сообщества (Slack, Discourse), затем каталоги MCP-серверов на Фазе 1.
-- **Партнёрство с экосистемой, а не лобовая война:** интегрироваться в dbt + ClickHouse + Lightdash как дополнение (forecasting add-on), а не строить свой BI.
+**Scale mode:** solo (early open-source project). Segments ≤3, ranking is qualitative.
+
+### 4.1 Business-problem statement
+
+- **Business problem:** choose a segment and wedge to launch the OSS project with a prospect of open-core monetization.
+- **Decision:** whom to focus the MVP and narrative on to get both adoption and a path to revenue.
+- **Success metric (early):** GitHub stars and active self-host installations → share that connected MCP to a real agent → conversion to cloud/enterprise.
+
+### 4.2 Segments × Jobs × current solutions
+
+**Segment 1 (GTM beachhead vertical) — Data / Analytics engineers and BizOps in data-heavy verticals (delivery/marketplace/e-commerce).**
+
+- Core Jobs: forecast business KPIs by hour/day across many slices; explain the drivers; show actual-vs-forecast in their own BI. _Delivery-beachhead metric examples: GMV, delivered_orders, cancellations, retention, courier efficiency — this is a vertical example, not platform defaults (for contrast, another vertical gives its own KPIs: e-commerce — conversion_rate/AOV/returns). The concrete metrics and dimensions live in the instance repo._
+- Big Job: make operational-business decisions from data without queuing for the data-science team.
+- Current solutions: dbt + ClickHouse/BigQuery + Lightdash/Looker/Metabase; Prophet/in-house scripts; "eyeballing the dashboard".
+- Criteria: a strong OSS culture of the modern data stack (dbt, ClickHouse, Lightdash); acute pain on high-cardinality forecasting; a clear self-host path.
+- Non-segment: teams without a warehouse/dbt that do not need forecasting beyond one or two series.
+
+**Segment 2 (secondary) — Data / ML engineers embedding forecasting into a data platform.**
+
+- Core Jobs: get a reliable zero-shot forecast without training; embed it as a worker in the pipeline; explain the drivers.
+- Current solutions: Darts, Nixtla, Prophet, foundation models, in-house.
+- Criteria: high competence, but tired of "gluing building blocks together"; they consume the project as a ready-made forecasting worker.
+
+**Segment 3 (secondary, realtime) — Platform / SRE on open stacks (Prometheus / OTel).**
+
+- Core Jobs: operational forecast over minutes, alerting, RCA during an incident. _Delivery-beachhead series examples: orders_per_minute, active_couriers, ETA deviation — a vertical example, not platform defaults._
+- Current solutions: Grafana + Prometheus + manual analysis; partly Datadog AI.
+- Criteria: they value self-host and vendor-neutrality; this is a narrow realtime layer, connected via a connector to Prometheus — not the main storage for business forecasting.
+
+### 4.3 Critical sequence (for Segment 1 — the priority one)
+
+Big Job: make business decisions from a demand/KPI forecast.
+
+1. Land the facts in the warehouse and prepare the metric at the right grain (dbt) → **done/weak** (dbt+ClickHouse already exist, but forecastable metric tables are prepared by hand).
+2. Forecast multi-segment series with intervals → **missing** (there is no ready foundation worker on top of the warehouse, everything runs on Prophet/by hand).
+3. Show actual-vs-forecast in their own BI → **missing** (there is no standard way to write the forecast back and render it in Lightdash/Looker).
+4. Find/explain what influences the metric (drivers by dimensions) → **missing** (no one does this automatically and vendor-neutrally).
+5. Let an LLM agent call the forecast/explanation through MCP → **missing** (vendor MCPs expose queries, not forecasting+RCA).
+
+**MVP bottleneck:** steps 2–3 (forecasting multi-segment series + actual-vs-forecast in BI). Steps 4–5 (dependencies + MCP) are the moat, but they are added _after_ the forecast's value has been proven.
+
+**Research hypothesis (trust):** do users trust an LLM explanation of drivers enough to act on it. _Kill-threshold:_ if across 5–8 interviews the answer is "I don't trust it without manual verification" — we keep only correlations flagged with uncertainty, and mark the explanation as experimental.
+
+### 4.4 Value mechanics (cluster: new product / unaddressed job)
+
+1. **Start doing an unaddressed job:** automatic discovery of dependencies between metrics (correlation + LLM explanation of lags/direction). Changes step 3 from missing to done. Risk: false correlations → an honest language of uncertainty is needed.
+2. **Move up to a higher-level job:** not "deliver a forecast" (that's a commodity), but "answer what will happen and why" through MCP. Changes step 4. Risk: the quality of LLM explanations.
+3. **Do several jobs with one solution:** forecast + anomalies + dependencies + Q&A in one deployable system. Removes the "gluing building blocks" problem for Segment 2.
+
+### 4.5 Opportunity ranking
+
+1. **Now (platform MVP)** — generic forecasting add-on: a domain-agnostic engine on top of the warehouse and a generic contract of forecast tables (`forecast_point`/`forecast_segment`), written back into the DWH and rendered in BI. Configurable model/provider/DB — with no domain defaults.
+2. **Now (beachhead-instance validation)** — run the platform MVP on the dogfood instance (delivery beachhead: stack `dbt → ClickHouse → forecast worker → forecast tables → Lightdash`) and prove value on real vertical KPIs. Domain metrics/connectors/models live in the instance repo. Without data and comparison against actuals there is no value.
+3. **Next** — dependency discovery (correlation + lag) and LLM explanation of drivers. This is the moat, added after the forecast's value is proven (Research hypothesis 4.3).
+4. **Next** — an MCP server on top of the forecast tables and dependencies (the agent asks "what will happen and what influences it").
+5. **Later** — operational realtime layer (Prometheus connector, short horizon, alerting); additional connectors (Postgres → BigQuery/Snowflake).
+6. **Reject (at the start)** — forking/replacing Lightdash, a custom dashboard engine, a metric-registry UI, Kafka connectors, multi-model comparison. Dilutes focus.
+
+### 4.6 Cross-links
+
+- Segment1."dependency discovery during an incident" → Segment3."what influences the business metric" — the same job "find the drivers", different packaging. This is the basis of a future expansion from the engineering into the business segment.
 
 ---
 
-## 9. Риски
+## 5. Recommended segment and positioning
 
-- **Commodity-риск:** вендор (Grafana/Datadog) добавляет forecasting+RCA в свой MCP. Митигация: вендор-нейтральность + self-host + скорость OSS-комьюнити.
-- **Риск доверия к LLM-объяснениям:** ложные корреляции подрывают доверие. Митигация: явный язык неопределённости, проверяемость, отсутствие громких причинных заявлений без данных (урок Uber про калибровку).
-- **Риск монетизации OSS:** слишком много в бесплатном → нет выручки; слишком мало → нет adoption. Митигация: чёткая граница «индивид vs организация».
-- **Ресурсный риск (solo):** распыление. Митигация: жёстко держать Reject-список (не форкать Lightdash, не строить свой BI/metric-registry).
-- **Риск sparse-сегментов:** при высокой кардинальности разрезов половина рядов — нули/пропуски, и forecasting деградирует. Митигация: начать с грубой гранулярности и агрегировать редкие сегменты. _Пример delivery-бичхеда: разрезы `city × store × merchant × courier_type × customer_tier × hour` стартуют с `city × merchant` или `city × store`. Конкретные размерности — в инстанс-репо вертикала._
-- **Цифры рынка ненадёжны:** оценки AIOps расходятся в 2–3 раза. Использовать как тренд, не как обоснование.
+**Priority segment: Data / Analytics engineers and BizOps in data-heavy verticals (delivery/marketplace/e-commerce).** Why: acute pain on high-cardinality forecasting of business KPIs, a strong OSS culture of the modern data stack (dbt/ClickHouse/Lightdash), and embedding-instead-of-replacing delivers a fast proof-of-value. Segment 2 (ML engineers) is secondary, consuming it as a worker; Segment 3 (SRE/Prometheus) is a secondary realtime layer.
 
----
+**Positioning statement:**
 
-## 10. Следующие шаги и гипотезы для проверки
+> For data and BizOps teams on the dbt + warehouse + BI stack, the project is an open-source forecasting layer that forecasts business metrics across many slices and explains what influences them, right inside your BI (Lightdash) — because it connects foundation models (TimesFM) to a warehouse-native pipeline and does not require building a new BI platform.
 
-1. **Собрать MVP-add-on** на своих данных доставки (`dbt → ClickHouse → TimesFM-воркер → forecast-таблица → Lightdash`) на 1–3 метриках и пройти 7 вопросов ценности — scope и DoD в `mvp-prd-backlog.md`.
-2. **Discovery-интервью (5–8 data/BizOps в доставке/маркетплейсе):** проверить Research-гипотезу доверия к LLM-объяснению драйверов. Kill-threshold — в 4.3.
-3. **Зафиксировать контракт forecast-таблицы и YAML forecast-job** до масштабирования (урок Uber про контракты) — контракт определён в `mvp-prd-backlog.md`.
-4. **Решить границу open-core** письменно до первого релиза.
-5. **Определить имя и нарратив** вокруг «forecasting add-on для dbt + warehouse + Lightdash».
+**Category strategy:** not a new category and not a new BI, but an **extension of the modern data stack**: "forecasting + metric explanation as a dbt-native add-on". One or two differentiators: (1) zero-shot forecasting of multi-segment business series on top of the warehouse; (2) later — LLM dependency discovery and MCP access as a moat.
 
 ---
 
-## Источники
+## 6. Open-source model (and optional open-core)
+
+Norn is open-source first. Monetization is not the goal in itself: first, value to the author and adoption in the data-stack OSS community. The open-core below is a _possible_ future, if external demand appears, not a precondition for launch.
+
+**OSS core (free, Apache 2.0 — like the Nixtla SDK, for adoption):**
+
+- Warehouse connectors (ClickHouse → Postgres → BigQuery/Snowflake) + optional Prometheus for realtime.
+- A forecasting worker on foundation models (TimesFM/Chronos/Moirai) with confidence intervals and calibration re-evaluation; writing forecast tables back into the warehouse.
+- dbt models and Lightdash integration (actual-vs-forecast), not a custom BI engine.
+- Dependency discovery between metrics (correlations + LLM explanation) — the moat layer.
+- An MCP server with a clear tool contract; single-node deployment (Docker/Helm).
+
+**Commercial layer (open-core, modeled on Grafana/PostHog):**
+
+- Managed cloud (hosting, updates, inference scale).
+- Enterprise: RBAC, SSO/SAML, audit, multi-tenancy, long-term retention, governance/compliance.
+- Scale: high-load inference, fine-tuning for the customer's domain, priority support/SLA.
+- Predictive alerting and enterprise-grade integrations.
+
+**Boundary principle (important for open-core):** in OSS — everything one engineer/team needs to get value on their own data. In commercial — what an organization needs for scale and control. Do not hide behind a paywall anything that kills the basic use case, otherwise the community will not grow.
+
+---
+
+## 7. Product wedge and roadmap
+
+**Phase 0 — MVP (two parts):** _(a) platform MVP_ — a domain-agnostic forecasting add-on: a generic engine on top of the warehouse and a generic contract of forecast tables that writes the forecast back into the DWH and is rendered in the existing BI (instead of building one's own). _(b) beachhead-instance validation_ — run the platform MVP on the delivery-beachhead dogfood instance (stack example `dbt → ClickHouse → forecast worker → forecast table → Lightdash`) and prove the forecast's value on real vertical KPIs. Domain details live in the instance repo; the hard scope, DoD (7 value questions), and contracts are in `mvp-prd-backlog.md`.
+
+**Phase 1 — moat (dependencies + MCP):** dependency discovery (correlation + lag) and LLM explanation of drivers with explicit uncertainty; an MCP server on top of the forecast tables and dependencies. Here the unique differentiator is added, after the forecast's value is proven.
+
+**Phase 2 — connector scale:** Postgres → BigQuery/Snowflake; calibration re-evaluation (the Uber lesson); optional Prometheus for the operational realtime layer.
+
+**Phase 3 — operationalization and (optional) monetization:** predictive alerting, cloud/enterprise features, fine-tuning for the domain — only if external demand appears.
+
+### 7.1 Architecture and mono-repo (for execution)
+
+A mono-repo of three parts mapped exactly onto the three focus layers (integration / forecast / agent) — the layout, tech stack, and environment-isolation principles are moved to execution: `../erd/monorepo-and-data-model.md`, the logical model is `../erd/erd.mermaid`, the component diagram is `../erd/architecture.mermaid`. The PRD points there (`mvp-prd-backlog.md` → "Technical context").
+
+---
+
+## 8. Go-to-market and community strategy
+
+- **Channel = open-source distribution within the data stack:** GitHub (a README with a 30-min "aha"), ready-made dbt models and Lightdash dashboards as a starter example. The metric is stars and active installations, then the share that reached actual-vs-forecast.
+- **Content gap to capture:** articles "forecasting delivery business KPIs on TimesFM over ClickHouse + Lightdash", "why Prometheus is not for high-cardinality business forecasting", "actual-vs-forecast in dbt without a BI platform", "how to compute MAPE/WAPE per segment". No one writes vendor-neutrally for the dbt/Lightdash audience.
+- **Community:** the dbt/ClickHouse/Lightdash communities (Slack, Discourse), then MCP-server catalogs in Phase 1.
+- **Partner with the ecosystem rather than wage a head-on war:** integrate into dbt + ClickHouse + Lightdash as a complement (forecasting add-on), rather than building one's own BI.
+
+---
+
+## 9. Risks
+
+- **Commodity risk:** a vendor (Grafana/Datadog) adds forecasting+RCA to its MCP. Mitigation: vendor-neutrality + self-host + the speed of the OSS community.
+- **Risk of trust in LLM explanations:** false correlations undermine trust. Mitigation: explicit language of uncertainty, verifiability, no loud causal claims without data (the Uber lesson about calibration).
+- **OSS monetization risk:** too much in the free tier → no revenue; too little → no adoption. Mitigation: a clear "individual vs organization" boundary.
+- **Resource risk (solo):** spreading thin. Mitigation: hold the Reject list firmly (do not fork Lightdash, do not build one's own BI/metric-registry).
+- **Sparse-segment risk:** at high slice cardinality, half the series are zeros/gaps, and forecasting degrades. Mitigation: start at a coarse granularity and aggregate rare segments. _Delivery-beachhead example: the slices `city × store × merchant × courier_type × customer_tier × hour` start with `city × merchant` or `city × store`. The concrete dimensions live in the vertical's instance repo._
+- **Market figures are unreliable:** AIOps estimates diverge by 2–3×. Use as a trend, not as justification.
+
+---
+
+## 10. Next steps and hypotheses to validate
+
+1. **Assemble the MVP add-on** on one's own delivery data (`dbt → ClickHouse → TimesFM worker → forecast table → Lightdash`) on 1–3 metrics and pass the 7 value questions — scope and DoD in `mvp-prd-backlog.md`.
+2. **Discovery interviews (5–8 data/BizOps in delivery/marketplace):** validate the Research hypothesis of trust in the LLM explanation of drivers. Kill-threshold — in 4.3.
+3. **Lock the forecast-table contract and the YAML forecast job** before scaling (the Uber lesson about contracts) — the contract is defined in `mvp-prd-backlog.md`.
+4. **Decide the open-core boundary** in writing before the first release.
+5. **Define the name and narrative** around "a forecasting add-on for dbt + warehouse + Lightdash".
+
+---
+
+## Sources
 
 - [Uber — Scaling Real-Time Traffic Forecasting with a Graph-Aware Transformer](https://www.uber.com/sa/en/blog/scaling-real-time-traffic/)
-- [Google TimesFM (репозиторий)](https://github.com/google-research/timesfm)
+- [Google TimesFM (repository)](https://github.com/google-research/timesfm)
 - [The 2026 Time Series Toolkit: 5 Foundation Models — MachineLearningMastery](https://machinelearningmastery.com/the-2026-time-series-toolkit-5-foundation-models-for-autonomous-forecasting/)
 - [Moirai 2.0: When Less Is More for Time Series Forecasting (arXiv)](https://arxiv.org/html/2511.11698v1)
 - [Nixtla — Time Series Forecasting & Anomaly Detection](https://www.nixtla.io/)

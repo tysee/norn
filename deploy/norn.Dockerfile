@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir \
     /app/packages/core /app/packages/integration /app/packages/forecast \
     /app/packages/agent /app/packages/scheduler /app/cli
 
-# дефолтный конфиг запекается; всё переопределяется env (env > yaml), секреты только env
+# the default config is baked in; everything is overridable via env (env > yaml), secrets via env only
 COPY config/ /app/config/
 ENV NORN_CONFIG_DIR=/app/config
 # unbuffered stdout/stderr: docker logs show scheduler progress immediately
