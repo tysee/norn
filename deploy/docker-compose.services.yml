@@ -68,6 +68,8 @@ services:
 
   # Switchable LLM judge. Off (profile not started) => deps jobs write evidence
   # with explained=false. Ollama on the host is reachable via host.docker.internal.
+  # Cloud providers: put the provider switch + secret into deploy/agent.env
+  # (copy agent.env.example; gitignored) — loaded below if present.
   agent:
     build:
       context: ..
@@ -77,12 +79,18 @@ services:
     profiles: ["agent"]
     ports:
       - "127.0.0.1:9400:9400"
+    env_file:
+      - path: ./agent.env
+        required: false
     environment:
       # build_agent() eagerly loads norn settings at startup (DatabaseSettings
       # requires NORN_DB_PASSWORD), so the worker needs it even though it does
       # not touch ClickHouse itself.
       NORN_DB_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
-      NORN_AGENT_BASE_URL: ${NORN_AGENT_BASE_URL:-http://host.docker.internal:11434/v1}
+      # ${VAR-default} (no colon): unset -> Ollama-on-host default; explicitly
+      # EMPTY (NORN_AGENT_BASE_URL= in deploy/.env) -> stays empty, which lets
+      # openai-api/anthropic clients use their real default endpoints.
+      NORN_AGENT_BASE_URL: ${NORN_AGENT_BASE_URL-http://host.docker.internal:11434/v1}
 
 volumes:
   hf-cache: {}

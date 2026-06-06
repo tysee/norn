@@ -227,3 +227,4 @@ docs/prd/
 .claude/
 docs/specs/
 .user.yml
+deploy/agent.env
