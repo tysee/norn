@@ -15,15 +15,27 @@ the Lightdash bootstrap. Nothing domain-specific lives here; instance policy
 
 ## Env-file matrix (which `.env` does what)
 
-| File | Read by | Purpose | In git |
+| File | Mechanism — how it reaches a process | Purpose | In git |
 | --- | --- | --- | --- |
-| `deploy/.env` | docker compose (both files) + the bootstrap | stack interpolation: ClickHouse creds, `LIGHTDASH_SECRET` (keep constant!), admin bootstrap values, default demo publish policy, `COMPOSE_IGNORE_ORPHANS` | only `.env.example` |
-| `deploy/agent.env` | the `agent` service (`env_file`, optional) | the LLM judge's provider switch + secret (`NORN_AGENT_PROVIDER/MODEL/OUTPUT_MODE`, `*_API_KEY`) | only `agent.env.example` |
-| `instances/<i>/deploy/.env` | `lightdash-init` via `--env-file` | which Lightdash project name + dbt dir to publish for THIS instance (`LD_PROJECT_NAME`, `DBT_PROJECT_HOST_DIR`) | only `.env.example` |
-| shell env / k8s Secrets | the `norn` CLI and services | secrets and ad-hoc `NORN_<SECTION>_<FIELD>` overrides | never |
+| `deploy/.env` | compose **interpolation**: substitutes `${VAR}` inside the compose YAML; vars do **not** enter containers unless a service's `environment:` maps them | stack knobs: ClickHouse creds, `LIGHTDASH_SECRET` (keep constant!), admin bootstrap values, default demo publish policy, `COMPOSE_IGNORE_ORPHANS` | only `.env.example` |
+| `deploy/agent.env` | **`env_file`** on the `agent` service: injected **wholesale into that one container** (optional — absent file is fine) | the LLM judge's provider switch + secret (`NORN_AGENT_PROVIDER/MODEL/OUTPUT_MODE`, `*_API_KEY`) | only `agent.env.example` |
+| `instances/<i>/deploy/.env` | passed explicitly to one command: `lightdash-init` via `--env-file` | which Lightdash project name + dbt dir to publish for THIS instance (`LD_PROJECT_NAME`, `DBT_PROJECT_HOST_DIR`) | only `.env.example` |
+| shell env / k8s Secrets | ordinary process environment | secrets and ad-hoc `NORN_<SECTION>_<FIELD>` overrides for the `norn` CLI and services | never |
 
 Rule of thumb: **`deploy/.env` = the stack, `instances/<i>/deploy/.env` = what to
-publish, `agent.env` = who judges.** Where to keep secrets is covered in
+publish, `agent.env` = who judges.**
+
+> **Why is `agent.env` a separate file and not part of `deploy/.env`?**
+> Different mechanisms. `deploy/.env` only feeds `${...}` interpolation — adding
+> `OPENAI_API_KEY` there would go nowhere unless every provider var were also
+> hardcoded into the compose YAML (which would clobber the image's config
+> defaults with empty strings when unset). Loading all of `deploy/.env` into the
+> agent container instead would hand the LLM judge the Lightdash admin password
+> and stack secrets it has no business seeing. A dedicated `env_file` gives the
+> judge exactly its own variables — nothing more. So: provider config →
+> `cp agent.env.example agent.env`; everything stack-wide → `.env`.
+
+Where to keep secrets in general is covered in
 [Configuration](../docs/guide/configuration.md#where-to-keep-them-so-they-never-reach-the-repo).
 
 ## dbt: three projects, three roles
