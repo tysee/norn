@@ -193,6 +193,45 @@ as `LLMUnavailable` at judge time (explicit degradation), not at config load.
 > (`ollama pull <model>`). `base_url` must point at the Ollama OpenAI-compatible
 > endpoint — there is no implicit fallback in code.
 
+### Per-provider setup
+
+Switching provider is always the same three env vars on top of `agent.yml`
+(plus the provider's secret): `NORN_AGENT_PROVIDER`, `NORN_AGENT_MODEL`,
+`NORN_AGENT_OUTPUT_MODE` — see [Configuration](../configuration.md) for where
+to keep the secrets.
+
+**`openai-api` (OpenAI platform key).** Create an API key at
+*platform.openai.com → API keys* (`sk-...`). `base_url` stays `null` (the
+client defaults to `api.openai.com`); set it only for an OpenAI-compatible
+proxy/gateway.
+
+```bash
+export OPENAI_API_KEY=sk-...
+export NORN_AGENT_PROVIDER=openai-api NORN_AGENT_MODEL=gpt-4o-mini NORN_AGENT_OUTPUT_MODE=tool
+```
+
+**`openrouter` (one key, many vendors).** Create a key at
+*openrouter.ai → Keys* (`sk-or-...`). Models are addressed as
+`<vendor>/<model>`; this is the quickest way to A/B different vendors without
+new accounts. `base_url` is **ignored** for this provider (fixed endpoint).
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+export NORN_AGENT_PROVIDER=openrouter NORN_AGENT_MODEL=anthropic/claude-sonnet-4-5 NORN_AGENT_OUTPUT_MODE=tool
+```
+
+**`anthropic-api` (Claude direct).** Create a key at
+*console.anthropic.com → API keys* (`sk-ant-...`). `base_url` is **ignored**
+(fixed endpoint).
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export NORN_AGENT_PROVIDER=anthropic-api NORN_AGENT_MODEL=claude-sonnet-4-5 NORN_AGENT_OUTPUT_MODE=tool
+```
+
+For `ollama` see the note above (daemon + pulled model, explicit `base_url`,
+no secret); for `openai-oauth` see the dedicated flow below.
+
 ### The `openai-oauth` flow (bearer token instead of an API key)
 
 `openai-oauth` is for authenticating with an **OAuth access token** (e.g. from a
