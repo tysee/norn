@@ -1,56 +1,62 @@
 %% Norn — sidecar architecture for Lightdash
 flowchart TB
 
-    analyst([Analyst])
-    cli["CLI / orchestrator<br/>norn up — one command"]
+    analyst([Analyst / Agent])
+    cli["CLI / orchestrator (typer)<br/>norn forecast | calibrate | deps |<br/>schema-apply | mcp | scheduler | up"]
 
-    subgraph monorepo["Monorepo: tysee/norn"]
+    subgraph monorepo["Monorepo: tysee/norn (5 packages + cli)"]
         direction TB
-        agent["packages/agent<br/>Dependency-analysis agent<br/>(pi.dev)"]
-        forecast["packages/forecast<br/>Forecast service<br/>(TimesFM 2.5 worker)"]
-        mcp["MCP server<br/>(FastMCP, agent interface)"]
-        tfmworker["TimesFM worker<br/>(FastAPI, torch container)"]
-        integ["packages/integration<br/>Glue: dbt + Lightdash + ClickHouse"]
-        meta[("addon Postgres<br/>metadata: jobs, runs,<br/>deps, metric_def")]
+        core["packages/core<br/>config + contract + ClickHouse client"]
+        integ["packages/integration<br/>contract schema (schema.sql, 5 tables)"]
+        forecast["packages/forecast<br/>forecasters + calibration + covariates<br/>+ MCP server + TimesFM worker"]
+        agent["packages/agent<br/>lead/lag analysis + LLM judge"]
+        scheduler["packages/scheduler<br/>APScheduler cron + FastAPI API"]
+        mcp["MCP server :9200<br/>(FastMCP, 11 read tools)"]
+        tfmworker["TimesFM worker :9100<br/>(FastAPI, torch container)"]
+        agentworker["agent worker :9400<br/>(FastAPI, switchable LLM judge)"]
     end
 
     subgraph existing["Existing stack (not forked)"]
         direction TB
-        lightdash["Lightdash<br/>BI / dashboards / semantic"]
-        ldpg[("Lightdash Postgres<br/>projects, dbt metrics")]
-        ch[("ClickHouse<br/>marts, forecast tables,<br/>actual_vs_forecast")]
-        dbt["dbt project<br/>metrics and grain"]
+        lightdash["Lightdash :8080<br/>BI / dashboards / semantic"]
+        ldpg[("Lightdash Postgres<br/>+ minio + headless-browser")]
+        ch[("ClickHouse :8123<br/>contract tables + marts + views")]
+        dbt["dbt project (instance)<br/>mart_metric / fct_ot / overlays"]
     end
 
-    llm["LLM provider<br/>dependency explanation"]
+    llm["LLM provider<br/>ollama | openai | openrouter | anthropic"]
 
     analyst --> cli
-    cli --> integ
     cli --> forecast
     cli --> agent
+    cli --> scheduler
+    cli --> integ
 
-    integ -->|reads metric definitions| ldpg
-    integ -->|builds/reads marts| ch
-    integ -->|registers forecast models| dbt
-    dbt --> ch
+    integ -->|schema-apply / prepare_schema| ch
+    dbt -->|builds marts + contract tables| ch
 
     forecast -->|extract series| ch
-    forecast -->|write-back forecast_point| ch
+    forecast -->|write forecast_run/point/segment| ch
     forecast -->|HTTP /forecast| tfmworker
-    lightdash -->|reads dbt actual_vs_forecast| ch
-    mcp -->|reads forecast_point / forecast_segment| ch
-    agent -->|MCP tools| mcp
-    forecast --> meta
 
-    agent -->|reads series| ch
-    agent -->|correlations + lags| meta
-    agent -->|explanation| llm
+    scheduler -->|run_action: forecast/calibrate/deps| forecast
+    scheduler -->|run_action: deps| agent
 
-    lightdash -->|actual vs forecast| ch
+    agent -->|read mart_metric series| ch
+    agent -->|write metric_dependency| ch
+    agent -->|judge in-process| llm
+    agent -->|HTTP /judge (optional)| agentworker
+    agentworker -->|explanation| llm
+    agent -->|write dependency_explanation| ch
+
+    mcp -->|read forecast_* / dependency_*| ch
+    analyst -->|MCP tools (streamable-http)| mcp
+
+    lightdash -->|reads dbt overlay views| ch
     lightdash --> ldpg
     analyst -->|views dashboard| lightdash
 
     classDef ours fill:#E8C8BA,stroke:#B8553E,color:#1C1814;
     classDef ext fill:#EFE6CF,stroke:#8C8275,color:#1C1814;
-    class agent,forecast,mcp,integ,meta,cli ours;
+    class core,integ,forecast,agent,scheduler,mcp,tfmworker,agentworker,cli ours;
     class lightdash,ldpg,ch,dbt ext;

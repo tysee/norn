@@ -116,6 +116,12 @@ uv run norn forecast forecasts/example.yml
 The command extracts the series, forecasts each segment, writes rows into the contract
 tables, and prints `run_id=<...>`.
 
+> **Concrete example.** The vendored ETT instance ships a real version of this job at
+> [`instances/ett/forecasts/ot_baseline.yml`](../../instances/ett/forecasts/ot_baseline.yml):
+> it forecasts the `ot` (oil-temperature) metric from the `fct_ot` mart at `hourly`
+> grain over `dimensions: [dataset, feature]`. Once that instance's marts exist you can
+> run `uv run norn forecast instances/ett/forecasts/ot_baseline.yml` verbatim.
+
 **About `model`:** the default `baseline-seasonal-naive` runs entirely in-process with no
 external dependencies — ideal for a first run. The alternative `timesfm-2.5` requires a
 separate TimesFM worker; if you select it and the worker is unreachable, the run **fails
@@ -144,6 +150,9 @@ fetch the forecast for one segment:
 get_forecast(metric="<your_metric>", segment="<dim=value>")
 ```
 
+For the ETT instance the concrete call is
+`get_forecast(metric="ot", segment="dataset=ETTh1|feature=ot")`.
+
 There are **11 tools** in total (forecasts, expected ranges, band classification,
 calibration, dependencies, run status, and listing). The full connection setup and tool
 reference is in [MCP](mcp.md).
@@ -155,7 +164,11 @@ reference is in [MCP](mcp.md).
 The platform is intentionally empty of domain content: it reads marts you provide and
 writes forecasts back. An **instance** repo supplies the ingestion, marts (your
 `<your_mart>`), jobs, and dashboards. For a concrete worked example, see the
-`norn-crypto-instance` repo.
+`norn-ett-instance` repo, vendored at [`instances/ett`](../../instances/ett) — it ingests
+the public ETT (Electricity Transformer Temperature) dataset, builds the `mart_metric` /
+`fct_ot` marts, and ships ready-to-run jobs (`forecasts/ot_baseline.yml`,
+`forecasts/ot_timesfm.yml`, `forecasts/ot_timesfm_xreg.yml`, and `forecasts/deps/*.yml`)
+that forecast the `ot` oil-temperature metric per `dataset=ETTh1|feature=ot` segment.
 
 ---
 

@@ -18,12 +18,12 @@ cloud. Examples are intentionally abstract (`metric: <your_metric>`,
 
 Work through the pages in this order; each builds lightly on the previous one.
 
-1. **[Overview](overview.md)** — what norn is, the `dbt → ClickHouse → forecast worker → Lightdash` architecture, the platform-versus-instance model, and the feature list.
+1. **[Overview](overview.md)** — what norn is, the `scheduler → dbt → ClickHouse → forecast worker → Lightdash` architecture, the platform-versus-instance model, and the feature list.
 2. **[Getting started](getting-started.md)** — a copy-pasteable local quickstart: install, stand up a local ClickHouse, apply the schema, run your first forecast, and query it.
-3. **[Configuration](configuration.md)** — the config model (`config/*.yml` + env, no hidden defaults), every field of `database.yml` / `forecast.yml` / `agent.yml` / `mcp.yml`, and the LLM-provider table.
+3. **[Configuration](configuration.md)** — the config model (`config/*.yml` + env, no hidden defaults), every field of `database.yml` / `forecast.yml` / `agent.yml` / `mcp.yml` / `scheduler.yml`, and the LLM-provider table.
 4. **[Jobs](jobs.md)** — authoring forecast and dependency jobs, calibration, covariates / `use_dependencies`, schema ownership, and what lands in the contract tables.
 5. **[MCP](mcp.md)** — connecting an agent over streamable-http and the full reference for all 11 read tools.
-6. **[Deployment](deployment.md)** — running locally with Docker, building and pointing at the TimesFM worker, and environment-agnostic cloud / Kubernetes deployment.
+6. **[Deployment](deployment.md)** — running locally with Docker (infra vs. `docker-compose.services.yml`), the norn services (`scheduler`, `mcp`, `agent`, `timesfm`) and their ports, and environment-agnostic cloud / Kubernetes deployment.
 
 ## Audience map
 
@@ -39,9 +39,10 @@ If you are new to norn entirely, read [Overview](overview.md) first regardless o
 
 ## Instances
 
-Domain specifics (metrics, symbols, dashboards) live in an instance repo —
-e.g. `norn-crypto-instance`. The platform stays generic; the instance supplies the
-ingestion, marts, jobs, and dashboards for its domain.
+Domain specifics (metrics, dimensions, dashboards) live in an instance repo —
+e.g. `norn-ett-instance` (the public example, the Electricity Transformer
+Temperature dataset, mounted at `instances/ett`). The platform stays generic;
+the instance supplies the ingestion, marts, jobs, and dashboards for its domain.
 
 ## See also
 

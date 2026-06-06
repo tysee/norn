@@ -2,7 +2,7 @@
 
 > **This is the MVP of the GTM beachhead instance (delivery); platform code does not hardcode the domain — the metrics/dimensions/tables here are instance examples.**
 
-**Platform invariant.** norn is a vendor-neutral, domain-AGNOSTIC forecasting platform: multi-segment forecasting of metrics and dependency discovery on top of any warehouse via a generic contract (`forecast_point`/`forecast_segment`), with configurable model/provider/DB and an MCP contract. Platform code (`packages/*`, `cli`) carries NO domain defaults — no built-in metrics, symbols, dimensions, ingestion formats, dashboards, prompts, nor LLM-model choice. All domain specificity lives in a separate instance repo (`norn-crypto-instance` — the first dogfood instance, wired in as a submodule). The GTM focus (first target vertical) is delivery/marketplace/e-commerce: that is a market strategy, NOT a platform default. Any concrete domain in this document (delivery KPIs like delivered_orders/GMV, crypto symbols BTC/TON, dimensions, transformations, model choice) is a labeled EXAMPLE pointing at the instance/vertical, not a platform requirement; domain details live in the instance repo.
+**Platform invariant.** norn is a vendor-neutral, domain-AGNOSTIC forecasting platform: multi-segment forecasting of metrics and dependency discovery on top of any warehouse via a generic contract (`forecast_point`/`forecast_segment`), with configurable model/provider/DB and an MCP contract. Platform code (`packages/*`, `cli`) carries NO domain defaults — no built-in metrics, symbols, dimensions, ingestion formats, dashboards, prompts, nor LLM-model choice. All domain specificity lives in a separate instance repo (`norn-ett-instance` at `instances/ett` — the public open-source example instance, wired in as a submodule). The GTM focus (first target vertical) is delivery/marketplace/e-commerce: that is a market strategy, NOT a platform default. Any concrete domain in this document (delivery KPIs like delivered_orders/GMV, the ETT example metric `ot`, dimensions, transformations, model choice) is a labeled EXAMPLE pointing at the instance/vertical, not a platform requirement; domain details live in the instance repo.
 
 PRD pattern: feature
 Scale mode: solo
@@ -34,7 +34,7 @@ Upstream artifacts consumed: strategy-review [yes], jobs-backlog [no — the JTB
 - **Guardrail metrics:** calibration (actual interval coverage ≈ nominal), inference cost/latency on self-host without a GPU farm.
 - **Non-goals:** an own BI/dashboard engine, a Lightdash fork, a metric-registry UI, Kafka, multi-model comparison, Prometheus realtime, additional warehouse connectors (all on the strategy's Reject list §4.5).
 
-> **No domain defaults / Platform Genericity Checkpoint.** Platform code (`packages/*`, `cli`) must not hardcode metric names, dimensions, table patterns, ingestion formats, dashboards or prompts — all of that comes from the instance configuration. The same generic contract (`forecast_point`/`forecast_segment`, MCP tools) must work unchanged for another instance; the MVP additionally validates this on the crypto instance (`norn-crypto-instance`) with different metrics/symbols/dimensions. The delivery values below are an example of the GTM beachhead vertical, not the platform scope.
+> **No domain defaults / Platform Genericity Checkpoint.** Platform code (`packages/*`, `cli`) must not hardcode metric names, dimensions, table patterns, ingestion formats, dashboards or prompts — all of that comes from the instance configuration. The same generic contract (`forecast_point`/`forecast_segment`, MCP tools) must work unchanged for another instance; the public ETT instance (`norn-ett-instance` at `instances/ett`) exercises this with the metric `ot`, dimensions `dataset`/`feature`, and segments like `dataset=ETTh1|feature=ot`. The delivery values below are an example of the GTM beachhead vertical, not the platform scope.
 
 ## Scope (Phase 0 — hard scope)
 
@@ -50,11 +50,13 @@ Upstream artifacts consumed: strategy-review [yes], jobs-backlog [no — the JTB
 - A narrow set of dimensions — **city, store_id, merchant_id** (delivery-instance example; start with `city × merchant` or `city × store` for the sake of sparse risk, strategy §9).
 - Pipeline: `dbt metric in ClickHouse → TimesFM Python worker driven by a YAML config → forecast table → dbt actual-vs-forecast model → dashboards in Lightdash`.
 
+**Status:** the pipeline above is **built** and runs end-to-end on the public open-source ETT instance (`instances/ett`): metric `ot`, grain `hourly`, dimensions `dataset`/`feature`, segments `dataset=ETTh1|feature=ot` and `dataset=ETTh2|feature=ot`, jobs `ot_baseline.yml` / `ot_timesfm.yml` / `ot_timesfm_xreg.yml`, plus `forecasts/deps/*.yml` for dependency discovery. A built-in `norn scheduler` (driven by `instances/ett/deploy/jobs.yml`) runs forecast/calibrate/deps on cron. What remains is user-facing value validation (the 7 questions), not the engine.
+
 **Out of scope:** see Non-goals.
 
 ## Technical context (pointer, not a copy)
 
-- The mono-repo layout (`packages/integration` · `packages/forecast` · `packages/agent` + `cli`), tech stack (Python 3.14+, FastAPI, dbt, ClickHouse, TimesFM), isolation of the torch/dbt environments, dbt via subprocess — **in `../erd/monorepo-and-data-model.md`**.
+- The mono-repo layout (`packages/core` · `packages/integration` · `packages/forecast` · `packages/agent` · `packages/scheduler` + `cli`), tech stack (Python ≥3.12, FastAPI, dbt, ClickHouse, TimesFM 2.5, APScheduler, MCP, pydantic-ai), isolation of the torch/dbt environments, dbt via subprocess — **in `../erd/monorepo-and-data-model.md`**. (The TimesFM worker runs in its own pinned-3.12 container; the light platform image stays slim.)
 - The logical data model — `../erd/erd.mermaid` (legend `[LD]`/`[CH]`/`[META]`); the sidecar component diagram — `../erd/architecture.mermaid`.
 
 ## Design constraints / NFR (the Uber DeepETT lesson)
@@ -69,24 +71,26 @@ Upstream artifacts consumed: strategy-review [yes], jobs-backlog [no — the JTB
 
 > Carried over from strategy §10 item 3. Freeze before scaling (NFR-1).
 
-**forecast table (written back to ClickHouse, read by the dbt actual-vs-forecast model):**
+**forecast table — `forecast_point` (written back to ClickHouse, read by the dbt actual-vs-forecast model). The contract was frozen and is now implemented in `packages/integration/.../schema.sql`; the live column names are below:**
 
-| Field                       | Type            | Purpose                                                                           |
-| --------------------------- | --------------- | --------------------------------------------------------------------------------- |
-| `metric_name`               | String          | metric name (example (delivery instance): delivered_orders/GMV/cancellation_rate) |
-| `grain`                     | Enum(hour, day) | grain                                                                             |
-| `ts`                        | DateTime        | timestamp of the forecast point                                                   |
-| `<dim...>`                  | String          | city, store_id, merchant_id (per the job config)                                  |
-| `yhat`                      | Float           | point forecast                                                                    |
-| `yhat_lower` / `yhat_upper` | Float           | confidence-interval bounds                                                        |
-| `model` / `model_version`   | String          | TimesFM + version (for reproducibility)                                           |
-| `horizon`                   | Int             | horizon in grain steps                                                            |
-| `run_id`                    | String          | run identifier                                                                    |
-| `generated_at`              | DateTime        | when generated                                                                    |
+| Field                       | Type             | Purpose                                                                                 |
+| --------------------------- | ---------------- | --------------------------------------------------------------------------------------- |
+| `forecast_run_id`           | String           | run identifier (joins to `forecast_run`)                                                 |
+| `metric_name`               | String           | metric name (example (delivery instance): delivered_orders/GMV/cancellation_rate; ETT: `ot`) |
+| `segment_key`               | String           | dimensions encoded as one key (ETT: `dataset=ETTh1\|feature=ot`)                         |
+| `forecast_ts`               | DateTime         | timestamp of the forecast point                                                         |
+| `horizon_step`              | Int              | step index within the horizon                                                           |
+| `y_hat`                     | Float            | point forecast                                                                          |
+| `p10` / `p50` / `p90`       | Float            | quantile bounds (default 0.1/0.5/0.9 — the confidence interval)                          |
+| `y_actual`                  | Nullable(Float)  | actual value when known (also used for backtest pairs)                                   |
+| `model_name`                | String           | model tag, e.g. `timesfm-2.5` / `baseline-seasonal-naive`                                |
+| `created_at`                | DateTime         | when generated                                                                          |
+
+> Run-level metadata (`forecast_job`, `status`, `model_version`, `started_at`/`finished_at`, `horizon` etc.) lives in the companion `forecast_run` registry; per-segment quality (`wape`, `mape`, `coverage`, `bias`, `is_sparse`) in `forecast_segment`. There are exactly 5 contract tables: `forecast_run`, `forecast_point`, `forecast_segment`, `metric_dependency`, `dependency_explanation`.
 
 **YAML forecast-job (the "metric-description layer" grain in the MVP):**
 
-> Example (delivery instance); the contract is identical for the crypto instance with different values.
+> Example (delivery instance); the contract is identical for the public ETT instance with different values (see the ETT job examples below).
 
 ```yaml
 metric: delivered_orders
@@ -99,6 +103,23 @@ model: timesfm-2.5
 schedule: "0 * * * *" # recompute
 ```
 
+The live public ETT example (`instances/ett/forecasts/ot_timesfm.yml`) uses the same `ForecastJob` schema:
+
+```yaml
+metric: ot
+source: fct_ot          # dbt model / ClickHouse table
+grain: hourly           # daily | hourly
+dimensions: [dataset, feature]
+horizon: 24             # grain steps
+context_length: 512     # history window for TimesFM
+seasonality: 24
+model: timesfm-2.5      # or baseline-seasonal-naive (ot_baseline.yml)
+transform: none         # none | log
+schedule: "0 6 * * *"   # 5-field cron; a hint — the scheduler manifest is the source of truth
+```
+
+The `ot_timesfm_xreg.yml` variant additionally sets `use_dependencies: true`, which auto-attaches confirmed `source_leads` (from `dependency_explanation`) as TimesFM XReg covariates. Dependency jobs (`forecasts/deps/*.yml`) carry `source_segment`/`target_segment`/`max_lag` instead.
+
 ## Experiment plan
 
 - **Archetype:** dogfood validation (a concierge notebook on the author's own delivery data) → transitions into **pre-build/discovery** to test trust (strategy §4.3).
@@ -109,7 +130,7 @@ schedule: "0 * * * *" # recompute
 
 ## Acceptance criteria — DoD = 7 value questions
 
-> The DoD is NOT "did TimesFM run", but answers to the 7 questions (strategy §7 Phase 0). Each is an observable result on real data.
+> The DoD is NOT "did TimesFM run", but answers to the 7 questions (strategy §7 Phase 0). Each is an observable result on real data. The engine, calibration (rolling-origin backtest → `forecast_segment`), XReg covariates and MCP serving are now implemented, so these questions are answerable; they remain unchecked because they require validation against user decisions, not more code.
 
 - [ ] **1. Actionability** — the forecast gives the business user a useful signal on at least one of the 3 metrics (a recorded decision made based on the forecast).
 - [ ] **2. Grain stability** — documented at which grain (hourly/daily) the forecast is stable and where it falls apart.
@@ -121,7 +142,7 @@ schedule: "0 * * * *" # recompute
 
 ## Validation phase (the only one — L3 DRAFT, without Launch)
 
-- **Validation:** build the MVP add-on on the author's own data (1–3 metrics) → pass the 7 value questions + 5–8 discovery interviews.
+- **Validation:** the MVP add-on is built (and exercised end-to-end on the public ETT instance, incl. calibration, dependency discovery, XReg covariates, the MCP server and a built-in scheduler); the remaining validation step is to run it on real vertical data (1–3 metrics) → pass the 7 value questions + 5–8 discovery interviews.
   - **success threshold:** ≥1 metric passes question 1 (actionable) with adequate calibration (question 5).
   - **pivot/stop trigger:** trust kill-threshold (see decision rule) → do not build LLM-based driver explanation as core, downgrade it to experimental.
 - The Launch phase and the paid-acquisition plan are blocked until the evidence-gate is passed.

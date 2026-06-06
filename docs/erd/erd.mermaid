@@ -1,198 +1,150 @@
 %% Norn — ERD (repository tysee/norn)
-%% Invariant: domain-agnostic schema — a generic contract (forecast_point/forecast_segment) on top of any warehouse; the concrete metrics/dimensions/values below are merely EXAMPLES (instance/vertical), not platform defaults.
-%% Stores:  [META] = addon Postgres (next to Lightdash)
-%%          [CH]   = ClickHouse (facts, forecasts)
-%%          [LD]   = Lightdash-owned Postgres (we read it, we do not own it)
+%% Invariant: domain-agnostic schema — a generic contract (5 ClickHouse tables) on top of any warehouse;
+%% the concrete metric ("ot"), dimensions (dataset/feature) and segment values below come from the
+%% ETT example instance (instances/ett), not from the platform. The platform ships NO domain defaults.
+%% Stores:  [CH-contract] = ClickHouse contract tables owned/written by norn (schema.sql, 5 tables)
+%%          [CH-mart]     = ClickHouse marts/views built by the instance's dbt project (read by norn)
 erDiagram
 
-    %% ---------- Integration / config [META] ----------
-    PROJECT ||--o{ CONNECTION : has
-    PROJECT ||--o{ METRIC_DEFINITION : defines
-    PROJECT ||--o{ DEPENDENCY_ANALYSIS : runs
-    PROJECT }o--|| LD_PROJECT : "maps to"
-
-    PROJECT {
-        uuid id PK
-        string name
-        uuid lightdash_project_id FK "-> LD_PROJECT"
-        uuid clickhouse_connection_id FK "-> CONNECTION"
-        timestamp created_at
-    }
-
-    CONNECTION {
-        uuid id PK
-        uuid project_id FK
-        string type "clickhouse | lightdash_pg"
-        string dsn_secret "encrypted"
-        boolean is_default
-    }
-
-    %% ---------- Metric description layer [META] ----------
-    METRIC_DEFINITION ||--o{ METRIC_DIMENSION : has
-    METRIC_DEFINITION ||--o{ FORECAST_JOB : "is forecast by"
-    METRIC_DEFINITION }o--|| MART_METRIC : "sourced from"
-    METRIC_DEFINITION }o--o| LD_METRIC : "references"
-
-    METRIC_DEFINITION {
-        uuid id PK
-        uuid project_id FK
-        string name
-        string source_table "mart in the warehouse (CH/BigQuery/Snowflake/Postgres — see CONNECTION.type)"
-        string timestamp_column
-        string value_column
-        string grain "hourly | daily | weekly"
-        int default_horizon
-        int default_context_length
-        string sparse_policy "skip | aggregate"
-        uuid lightdash_metric_ref FK "nullable -> LD_METRIC"
-        string dbt_model_ref
-        timestamp created_at
-    }
-
-    METRIC_DIMENSION {
-        uuid id PK
-        uuid metric_definition_id FK
-        string name "example: dimensions from the instance configuration"
-        string ch_type "LowCardinality(String) | String"
-        boolean is_default_slice
-    }
-
-    %% ---------- Forecast service (TimesFM) [META + CH] ----------
-    FORECAST_JOB ||--o{ FORECAST_RUN : produces
+    %% ---------- Forecast contract [CH-contract] ----------
     FORECAST_RUN ||--o{ FORECAST_SEGMENT : evaluates
     FORECAST_RUN ||--o{ FORECAST_POINT : writes
-    FORECAST_SEGMENT ||--o{ FORECAST_POINT : "groups"
-
-    FORECAST_JOB {
-        uuid id PK
-        uuid metric_definition_id FK
-        json dimensions "subset for this job"
-        string grain
-        int horizon
-        int context_length
-        string model_name "timesfm-2.5"
-        string schedule "cron"
-        string output_table "CH forecast_*"
-        boolean enabled
-        timestamp created_at
-    }
+    FORECAST_SEGMENT ||--o{ FORECAST_POINT : "groups (metric_name, segment_key)"
 
     FORECAST_RUN {
-        uuid id PK
-        uuid forecast_job_id FK
-        string status "pending | running | success | failed"
-        timestamp started_at
-        timestamp finished_at
+        string forecast_run_id PK
+        string forecast_job "job path / name"
+        string status "running | success | failed"
+        string model_name "baseline-seasonal-naive | timesfm-2.5"
         string model_version
-        int segments_total
-        int segments_skipped
-        string error "nullable"
-    }
-
-    FORECAST_SEGMENT {
-        uuid id PK
-        uuid forecast_run_id FK
-        string segment_key "hash of dim values"
-        json dim_values
-        int n_points
-        boolean is_sparse
-        float wape
-        float mape
+        datetime started_at
+        datetime finished_at "Nullable"
+        uint32 segments_total
+        uint32 segments_skipped
+        string error "Nullable"
+        datetime created_at "PARTITION BY toYYYYMM(created_at)"
     }
 
     FORECAST_POINT {
-        string forecast_run_id FK "[CH]"
-        string metric_name
-        string segment_key
+        string forecast_run_id FK
+        string metric_name "example (ETT): ot"
+        string segment_key "example (ETT): dataset=ETTh1|feature=ot"
         datetime forecast_ts
-        int horizon_step
+        uint16 horizon_step
         float y_hat
         float p10
         float p50
         float p90
-        float y_actual "nullable"
+        float y_actual "Nullable (filled later for scoring)"
         string model_name
         datetime created_at
     }
 
-    %% ---------- Dependency agent (pi.dev) [META] ----------
-    DEPENDENCY_ANALYSIS ||--o{ METRIC_DEPENDENCY : finds
-    METRIC_DEPENDENCY ||--o{ DEPENDENCY_EXPLANATION : "explained by"
-    METRIC_DEPENDENCY }o--|| METRIC_DEFINITION : source
-    METRIC_DEPENDENCY }o--|| METRIC_DEFINITION : target
-
-    DEPENDENCY_ANALYSIS {
-        uuid id PK
-        uuid project_id FK
-        uuid target_metric_id FK
-        timestamp window_start
-        timestamp window_end
-        string method "lagged_corr | granger | mutual_info"
-        int max_lag
-        string status
-        timestamp created_at
+    FORECAST_SEGMENT {
+        string forecast_run_id FK
+        string metric_name
+        string segment_key
+        uint32 n_points
+        uint8 is_sparse
+        float wape
+        float mape
+        float coverage "mean(p10<=actual<=p90)"
+        float bias
+        datetime created_at
     }
 
+    %% ---------- Dependency contract [CH-contract] ----------
+    METRIC_DEPENDENCY ||--o{ DEPENDENCY_EXPLANATION : "explained by (per source->target)"
+
     METRIC_DEPENDENCY {
-        uuid id PK
-        uuid dependency_analysis_id FK
-        uuid source_metric_id FK
-        uuid target_metric_id FK
-        int lag "shift in grain units"
-        float score "corr / strength"
-        string direction "leads | lags | co-moves"
+        string analysis_run_id PK
+        string metric_name "example (ETT): reading"
+        string source_segment "example (ETT): dataset=ETTh1|feature=hufl"
+        string target_segment "example (ETT): dataset=ETTh1|feature=ot"
+        string method "lagged_cross_correlation | granger"
+        int16 lag "shift in grain units"
+        float score "corr strength / -log10(p)"
+        string direction "source_leads | target_leads | co_move | inconclusive"
+        float p_value "Nullable"
         float confidence
+        datetime window_start
+        datetime window_end
+        datetime created_at
     }
 
     DEPENDENCY_EXPLANATION {
-        uuid id PK
-        uuid metric_dependency_id FK
-        string text "LLM narrative"
+        string analysis_run_id FK
+        string metric_name
+        string source_segment
+        string target_segment
+        int16 lag
+        string direction
+        uint8 is_real "LLM verdict; 1 + direction=source_leads => XReg covariate"
         float confidence
+        string explanation "LLM narrative"
         string caveats "correlation != causation"
+        string change_note "drift vs previous run"
         string llm_model
-        timestamp created_at
+        datetime created_at
     }
 
-    %% ---------- Analytical store [CH] ----------
+    %% ---------- Instance marts/views (dbt-built, read by norn) [CH-mart] ----------
+    %% Shown for the ETT example instance (instances/ett/dbt/models). The platform reads
+    %% the long store `mart_metric` for series + covariates; Lightdash reads the overlay views.
+    MART_METRIC ||--o{ FCT_OT : "feature='ot'"
     MART_METRIC ||--o{ ACTUAL_VS_FORECAST : "actual side"
     FORECAST_POINT ||--o{ ACTUAL_VS_FORECAST : "forecast side"
+    FORECAST_SEGMENT ||--o{ CALIBRATION : "latest run per model"
+    METRIC_DEPENDENCY ||--o{ FEATURE_LEADS : evidence
+    DEPENDENCY_EXPLANATION ||--o{ FEATURE_LEADS : verdict
 
     MART_METRIC {
-        datetime ts PK "[warehouse] dbt-built; the mart is defined by the instance, columns/values are examples"
-        string dim_1 "example: instance dimension"
-        string dim_2 "example: instance dimension"
-        string dim_n "example: instance dimension"
-        float value "any numeric metric (configured by the instance)"
+        datetime ts "[CH-mart] dbt view; wide->long unpivot of 7 ETT channels"
+        string dataset "ETTh1 | ETTh2 (hourly only)"
+        string feature "hufl | hull | mufl | mull | lufl | lull | ot"
+        string metric_name "constant 'reading'"
+        float value "channel reading"
+        string segment_key "dataset=<ds>|feature=<feat>"
+    }
+
+    FCT_OT {
+        datetime ts "[CH-mart] mart_metric where feature='ot'"
+        string dataset
+        string segment_key
+        float ot "the forecast target"
     }
 
     ACTUAL_VS_FORECAST {
-        datetime ts "[CH] dbt view"
+        datetime ts "[CH-mart] dbt view: history + latest non-backtest run"
+        string metric_name
         string segment_key
         float y_hat
+        float p10
+        float p90
         float y_actual
         float error_abs
-        float ape
     }
 
-    %% ---------- Lightdash-owned (read-only refs) [LD] ----------
-    LD_PROJECT ||--o{ LD_DBT_MODEL : contains
-    LD_DBT_MODEL ||--o{ LD_METRIC : exposes
-
-    LD_PROJECT {
-        uuid id PK "[LD]"
-        string name
+    CALIBRATION {
+        string model_name "[CH-mart] e.g. timesfm-2.5+xreg (backtest)"
+        string segment_key
+        string metric_name
+        uint32 n_points
+        uint8 is_sparse
+        float coverage_pct "target ~80"
+        float mape_pct
+        float wape_pct
+        float bias
     }
 
-    LD_DBT_MODEL {
-        uuid id PK "[LD]"
-        uuid ld_project_id FK
-        string name
-    }
-
-    LD_METRIC {
-        uuid id PK "[LD]"
-        uuid ld_dbt_model_id FK
-        string name
-        string sql
+    FEATURE_LEADS {
+        string source_segment "[CH-mart] latest verdict per source->OT pair"
+        string target_segment
+        int16 lag
+        string direction
+        uint8 is_real
+        float confidence
+        string explanation
+        float xcorr_score "lagged_cross_correlation evidence"
+        float granger_p "granger evidence"
     }

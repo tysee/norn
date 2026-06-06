@@ -13,15 +13,15 @@ Main conclusion of the analysis: the market splits into two poles, with an unadd
 - **Foundation models and libraries** (TimesFM, Chronos-2, Moirai 2.0, Nixtla, Darts, Prophet) are models and Python libraries. They are not a deployable system, they have no MCP interface, and they do not automatically discover dependencies between metrics.
 - **Observability vendors** (Datadog, Grafana, New Relic, Sentry, PagerDuty, Honeycomb) have already shipped official MCP servers — this is the most "saturated" MCP category. But their MCP mostly gives the LLM access to existing dashboards and queries, not to a forecasting engine + causal-correlation analysis as an open, vendor-neutral layer.
 
-**Unaddressed niche (wedge):** a vendor-neutral forecasting layer for the modern data stack (dbt + DWH + BI) that forecasts business metrics and explains what drives them, and later exposes this externally via MCP. The unique differentiator is LLM-driven dependency discovery and narrative answers, not yet another forecasting API.
+**Unaddressed niche (wedge):** a vendor-neutral forecasting layer for the modern data stack (dbt + DWH + BI) that forecasts business metrics and explains what drives them, and exposes this externally via MCP. The unique differentiator is LLM-driven dependency discovery and narrative answers, not yet another forecasting API. (As of this revision the forecasting engine, dependency discovery, XReg covariates, calibration, the MCP server, and a built-in scheduler are all implemented; what remains is user-side trust validation.)
 
-**Platform invariant.** norn is a vendor-neutral, domain-AGNOSTIC forecasting platform: multi-segment metric forecasting and dependency discovery on top of any warehouse via a generic contract (`forecast_point`/`forecast_segment`), with configurable model/provider/DB and an MCP contract. The platform code (`packages/*`, `cli`) carries NO domain defaults — no built-in metrics, symbols, dimensions, ingestion formats, dashboards, prompts, or choice of LLM model. All domain specifics live in a separate instance repo (`norn-crypto-instance` — the first dogfood instance, attached as a submodule). The GTM focus (first target vertical) is delivery/marketplace/e-commerce: this is a market strategy, NOT a platform default. Any concrete domain in this document (delivery KPIs such as delivered_orders/GMV, crypto symbols BTC/TON, dimensions, transformations, model choice) is a labeled EXAMPLE pointing at an instance/vertical, not a platform requirement; the domain details live in the instance repo.
+**Platform invariant.** norn is a vendor-neutral, domain-AGNOSTIC forecasting platform: multi-segment metric forecasting and dependency discovery on top of any warehouse via a generic contract (`forecast_point`/`forecast_segment`), with configurable model/provider/DB and an MCP contract. The platform code (`packages/*`, `cli`) carries NO domain defaults — no built-in metrics, symbols, dimensions, ingestion formats, dashboards, prompts, or choice of LLM model. All domain specifics live in a separate instance repo (`norn-ett-instance` at `instances/ett` — the public open-source example instance, attached as a submodule). The GTM focus (first target vertical) is delivery/marketplace/e-commerce: this is a market strategy, NOT a platform default. Any concrete domain in this document (delivery KPIs such as delivered_orders/GMV, the ETT example metric `ot`, dimensions, transformations, model choice) is a labeled EXAMPLE pointing at an instance/vertical, not a platform requirement; the domain details live in the instance repo.
 
 **Instance pattern / GTM (how to read this document).** Three layers are strictly separated:
 
 - **Platform** (`packages/*`, `cli`) — the domain-agnostic engine and generic contract; it hardcodes no domain.
 - **GTM beachhead vertical** (delivery/marketplace/e-commerce) — the go-to-market strategy: the first target vertical for the narrative, content, and validation. This is a go-to-market choice, not something baked into the platform.
-- **Dogfood instance** (`norn-crypto-instance`, attached as a submodule) — a concrete working implementation on the author's real data; it holds the domain specifics (metrics, symbols, dimensions, ingestion, dashboards, prompts, model choice). Full domain details live in the instance repo.
+- **Example instance** (`norn-ett-instance` at `instances/ett`, attached as a submodule) — the public open-source example: a concrete working implementation on the ETDataset "ETT-small" (Electricity Transformer Temperature) public data; it holds the domain specifics (metric `ot`, dimensions `dataset`/`feature`, ingestion of the ETT CSVs into `raw_ett`, the `mart_metric`/`fct_ot` dbt models, dashboards, prompts, model choice). Full domain details live in the instance repo. (The author's own delivery data is dogfooded in a private sibling instance with the same contract.)
 
 Dependencies discovered by the agent enter the forecast as generic covariates (XReg), not as domain-specific series.
 
@@ -153,13 +153,13 @@ Axes: **"Library/model → Ready-made system"** (horizontal) and **"Proprietary 
 
 Big Job: make business decisions from a demand/KPI forecast.
 
-1. Land the facts in the warehouse and prepare the metric at the right grain (dbt) → **done/weak** (dbt+ClickHouse already exist, but forecastable metric tables are prepared by hand).
-2. Forecast multi-segment series with intervals → **missing** (there is no ready foundation worker on top of the warehouse, everything runs on Prophet/by hand).
-3. Show actual-vs-forecast in their own BI → **missing** (there is no standard way to write the forecast back and render it in Lightdash/Looker).
-4. Find/explain what influences the metric (drivers by dimensions) → **missing** (no one does this automatically and vendor-neutrally).
-5. Let an LLM agent call the forecast/explanation through MCP → **missing** (vendor MCPs expose queries, not forecasting+RCA).
+1. Land the facts in the warehouse and prepare the metric at the right grain (dbt) → **done** (in the ETT example: `ett backfill` → `raw_ett`, then the `mart_metric`/`fct_ot` dbt models; the metric is unpivoted long-form per `dataset`/`feature`).
+2. Forecast multi-segment series with intervals → **done** (the `norn forecast <job>` CLI runs a TimesFM 2.5 HTTP worker or a seasonal-naive baseline over the warehouse, writing `forecast_run`/`forecast_point` with p10/p50/p90 quantiles).
+3. Show actual-vs-forecast in their own BI → **done** (the platform writes `forecast_point`/`forecast_segment` back to ClickHouse; the ETT instance ships the `actual_vs_forecast`/`calibration`/`backtest_point` dbt models for Lightdash).
+4. Find/explain what influences the metric (drivers by dimensions) → **done** (`norn deps <job>` runs lagged cross-correlation + Granger and an LLM judge, writing `metric_dependency`/`dependency_explanation`; confirmed leads feed back as TimesFM XReg covariates).
+5. Let an LLM agent call the forecast/explanation through MCP → **done** (`norn mcp` serves a streamable-http MCP server with 11 read tools over the forecast/dependency tables).
 
-**MVP bottleneck:** steps 2–3 (forecasting multi-segment series + actual-vs-forecast in BI). Steps 4–5 (dependencies + MCP) are the moat, but they are added _after_ the forecast's value has been proven.
+**MVP bottleneck (historical):** steps 2–3 (forecasting multi-segment series + actual-vs-forecast in BI) were the original bottleneck and are now built. Steps 4–5 (dependencies + MCP) — the moat — are also implemented (dependency discovery, XReg, calibration, MCP server). What remains unproven is user-side trust validation (the Research hypothesis below), not the engineering.
 
 **Research hypothesis (trust):** do users trust an LLM explanation of drivers enough to act on it. _Kill-threshold:_ if across 5–8 interviews the answer is "I don't trust it without manual verification" — we keep only correlations flagged with uncertainty, and mark the explanation as experimental.
 
@@ -171,12 +171,13 @@ Big Job: make business decisions from a demand/KPI forecast.
 
 ### 4.5 Opportunity ranking
 
-1. **Now (platform MVP)** — generic forecasting add-on: a domain-agnostic engine on top of the warehouse and a generic contract of forecast tables (`forecast_point`/`forecast_segment`), written back into the DWH and rendered in BI. Configurable model/provider/DB — with no domain defaults.
-2. **Now (beachhead-instance validation)** — run the platform MVP on the dogfood instance (delivery beachhead: stack `dbt → ClickHouse → forecast worker → forecast tables → Lightdash`) and prove value on real vertical KPIs. Domain metrics/connectors/models live in the instance repo. Without data and comparison against actuals there is no value.
-3. **Next** — dependency discovery (correlation + lag) and LLM explanation of drivers. This is the moat, added after the forecast's value is proven (Research hypothesis 4.3).
-4. **Next** — an MCP server on top of the forecast tables and dependencies (the agent asks "what will happen and what influences it").
-5. **Later** — operational realtime layer (Prometheus connector, short horizon, alerting); additional connectors (Postgres → BigQuery/Snowflake).
-6. **Reject (at the start)** — forking/replacing Lightdash, a custom dashboard engine, a metric-registry UI, Kafka connectors, multi-model comparison. Dilutes focus.
+1. **Done (platform MVP)** — generic forecasting add-on: a domain-agnostic engine on top of the warehouse and a generic contract of forecast tables (`forecast_point`/`forecast_segment`), written back into the DWH and rendered in BI. Configurable model/provider/DB — with no domain defaults.
+2. **Done (example-instance validation)** — the platform runs end-to-end on the public ETT instance (stack `dbt → ClickHouse → forecast worker → forecast tables → Lightdash`) on the `ot` metric across `dataset=ETTh1|feature=ot` / `dataset=ETTh2|feature=ot`. Domain metrics/connectors/models live in the instance repo. (Business-value proof on real vertical KPIs still depends on user behavior beyond the author — see Research hypothesis 4.3.)
+3. **Done** — dependency discovery (lagged cross-correlation + Granger) and LLM explanation of drivers (the moat). Confirmed `source_leads` relations are auto-attached as TimesFM XReg covariates.
+4. **Done** — an MCP server on top of the forecast tables and dependencies (the agent asks "what will happen and what influences it"); 11 read tools, streamable-http.
+5. **Done (ops)** — a built-in cron scheduler (`norn scheduler`, APScheduler + FastAPI control API) that drives forecast/calibrate/deps jobs from a `jobs.yml` manifest; calibration re-evaluation (rolling-origin backtest writing `forecast_segment`).
+6. **Later** — operational realtime layer (Prometheus connector, short horizon, alerting); additional warehouse connectors (Postgres → BigQuery/Snowflake).
+7. **Reject (at the start)** — forking/replacing Lightdash, a custom dashboard engine, a metric-registry UI, Kafka connectors, multi-model comparison. Dilutes focus.
 
 ### 4.6 Cross-links
 
@@ -221,17 +222,19 @@ Norn is open-source first. Monetization is not the goal in itself: first, value 
 
 ## 7. Product wedge and roadmap
 
-**Phase 0 — MVP (two parts):** _(a) platform MVP_ — a domain-agnostic forecasting add-on: a generic engine on top of the warehouse and a generic contract of forecast tables that writes the forecast back into the DWH and is rendered in the existing BI (instead of building one's own). _(b) beachhead-instance validation_ — run the platform MVP on the delivery-beachhead dogfood instance (stack example `dbt → ClickHouse → forecast worker → forecast table → Lightdash`) and prove the forecast's value on real vertical KPIs. Domain details live in the instance repo; the hard scope, DoD (7 value questions), and contracts are in `mvp-prd-backlog.md`.
+**Phase 0 — MVP (two parts) — DONE:** _(a) platform MVP_ — a domain-agnostic forecasting add-on: a generic engine on top of the warehouse and a generic contract of forecast tables that writes the forecast back into the DWH and is rendered in the existing BI (instead of building one's own). _(b) example-instance validation_ — the platform runs end-to-end on the public ETT instance (stack `dbt → ClickHouse → forecast worker → forecast table → Lightdash`). Domain details live in the instance repo; the hard scope, DoD (7 value questions), and contracts are in `mvp-prd-backlog.md`. (Business-value proof on real vertical KPIs still depends on user-behavior validation.)
 
-**Phase 1 — moat (dependencies + MCP):** dependency discovery (correlation + lag) and LLM explanation of drivers with explicit uncertainty; an MCP server on top of the forecast tables and dependencies. Here the unique differentiator is added, after the forecast's value is proven.
+**Phase 1 — moat (dependencies + MCP) — DONE:** dependency discovery (lagged cross-correlation + Granger) and LLM explanation of drivers with explicit uncertainty; confirmed leads feed forward as TimesFM XReg covariates; an MCP server (11 read tools, streamable-http) on top of the forecast tables and dependencies. The remaining open item is user-side trust validation, not engineering.
 
-**Phase 2 — connector scale:** Postgres → BigQuery/Snowflake; calibration re-evaluation (the Uber lesson); optional Prometheus for the operational realtime layer.
+**Phase 1.5 — calibration + scheduling — DONE:** rolling-origin calibration re-evaluation (the Uber lesson) writing `forecast_segment`; a built-in cron scheduler (`norn scheduler`, APScheduler + FastAPI control API) driving forecast/calibrate/deps jobs from a `jobs.yml` manifest, deployed as a Docker service.
+
+**Phase 2 — connector scale:** Postgres → BigQuery/Snowflake; optional Prometheus for the operational realtime layer.
 
 **Phase 3 — operationalization and (optional) monetization:** predictive alerting, cloud/enterprise features, fine-tuning for the domain — only if external demand appears.
 
 ### 7.1 Architecture and mono-repo (for execution)
 
-A mono-repo of three parts mapped exactly onto the three focus layers (integration / forecast / agent) — the layout, tech stack, and environment-isolation principles are moved to execution: `../erd/monorepo-and-data-model.md`, the logical model is `../erd/erd.mermaid`, the component diagram is `../erd/architecture.mermaid`. The PRD points there (`mvp-prd-backlog.md` → "Technical context").
+A mono-repo of five packages (`core` foundation + `integration` / `forecast` / `agent` mapped onto the three focus layers, plus a built-in `scheduler`) and a `cli`. The forecast package also serves the MCP server and a TimesFM HTTP worker; the agent package ships a switchable HTTP LLM-judge worker; the scheduler package is an APScheduler-based cron service with a FastAPI control API. The layout, tech stack, and environment-isolation principles are in execution: `../erd/monorepo-and-data-model.md`, the logical model is `../erd/erd.mermaid`, the component diagram is `../erd/architecture.mermaid`. The PRD points there (`mvp-prd-backlog.md` → "Technical context").
 
 ---
 
@@ -257,7 +260,7 @@ A mono-repo of three parts mapped exactly onto the three focus layers (integrati
 
 ## 10. Next steps and hypotheses to validate
 
-1. **Assemble the MVP add-on** on one's own delivery data (`dbt → ClickHouse → TimesFM worker → forecast table → Lightdash`) on 1–3 metrics and pass the 7 value questions — scope and DoD in `mvp-prd-backlog.md`.
+1. **Validate the (now-assembled) MVP add-on** end-to-end — the engine runs on the public ETT instance (`dbt → ClickHouse → TimesFM worker → forecast table → Lightdash`); the remaining work is passing the 7 value questions on real vertical KPIs — scope and DoD in `mvp-prd-backlog.md`.
 2. **Discovery interviews (5–8 data/BizOps in delivery/marketplace):** validate the Research hypothesis of trust in the LLM explanation of drivers. Kill-threshold — in 4.3.
 3. **Lock the forecast-table contract and the YAML forecast job** before scaling (the Uber lesson about contracts) — the contract is defined in `mvp-prd-backlog.md`.
 4. **Decide the open-core boundary** in writing before the first release.

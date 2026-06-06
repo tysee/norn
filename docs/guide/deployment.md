@@ -62,7 +62,7 @@ config; you only point the platform at it.
 ### Build
 
 ```bash
-docker build -f deploy/timesfm.Dockerfile -t norn-timesfm .
+docker build -f deploy/timesfm.Dockerfile -t norn-timesfm:local .
 ```
 
 ### Run
@@ -80,8 +80,8 @@ Or standalone, without compose:
 docker run --rm -p 9100:9100 \
   -e NORN_TIMESFM_MAX_CONTEXT=1024 \
   -e NORN_TIMESFM_MAX_HORIZON=1024 \
-  -e NORN_TIMESFM_XREG_MODE=xreg+timesfm \
-  norn-timesfm
+  -e "NORN_TIMESFM_XREG_MODE=xreg + timesfm" \
+  norn-timesfm:local
 ```
 
 ### Worker environment
@@ -92,7 +92,7 @@ All three are optional and configure the worker itself (not the platform):
 |---|---|
 | `NORN_TIMESFM_MAX_CONTEXT` | Max context length the worker accepts (default `1024`). |
 | `NORN_TIMESFM_MAX_HORIZON` | Max horizon the worker accepts (default `1024`). |
-| `NORN_TIMESFM_XREG_MODE` | Covariate handling mode (default `xreg+timesfm`). |
+| `NORN_TIMESFM_XREG_MODE` | Covariate handling mode (default `xreg + timesfm`; the alternative is `timesfm + xreg`). |
 
 ### Point the platform at it
 

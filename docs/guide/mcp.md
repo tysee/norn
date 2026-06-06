@@ -18,7 +18,7 @@ Start the server with the CLI:
 uv run norn mcp
 ```
 
-This serves over the **streamable-http** transport, binding to `mcp.host` / `mcp.port` from `mcp.yml`. The defaults are:
+This serves over the **streamable-http** transport at `http://<host>:<port>/mcp` (note the `/mcp` path), binding to `mcp.host` / `mcp.port` from `mcp.yml`. The CLI echoes the exact URL on startup. The defaults are:
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -36,13 +36,13 @@ Point your agent/client at the streamable-http URL. A generic client entry looks
   "mcpServers": {
     "norn": {
       "transport": "streamable-http",
-      "url": "http://<host>:<port>"
+      "url": "http://<host>:<port>/mcp"
     }
   }
 }
 ```
 
-With the defaults that URL is `http://127.0.0.1:9200`. The server name registered by norn is `norn`.
+With the defaults that URL is `http://127.0.0.1:9200/mcp`. The server name registered by norn is `norn`.
 
 ## Tools
 
@@ -70,26 +70,26 @@ There are exactly **11 tools**. Common parameters: `metric` is a metric name (se
 
 ## Call examples
 
-Examples are abstract — substitute your own metric and segment keys.
+The calls below use the bundled ETT example instance — metric `ot` (oil temperature) with segment keys of the form `dataset=ETTh1|feature=ot`. Substitute your own metric and segment keys for other instances.
 
 ```text
 # Discover what is available
 list_metrics()
-  -> ["<your_metric>", ...]
-list_segments(metric="<your_metric>")
-  -> ["<dim=value>", "<dim=other_value>", ...]
+  -> ["ot", ...]
+list_segments(metric="ot")
+  -> ["dataset=ETTh1|feature=ot", "dataset=ETTh2|feature=ot", ...]
 
 # Latest forecast points for one metric/segment
-get_forecast(metric="<your_metric>", segment="<dim=value>")
+get_forecast(metric="ot", segment="dataset=ETTh1|feature=ot")
   -> [{"ts": "...", "horizon_step": 1, "y_hat": ..., "p10": ..., "p50": ..., "p90": ...}, ...]
 
 # Is the latest run fresh, and which model produced it?
 get_run_status()
-  -> {"available": true, "status": "succeeded", "model_name": "baseline-seasonal-naive", ...}
+  -> {"available": true, "status": "success", "model_name": "baseline-seasonal-naive", ...}
 
 # Lead/lag dependencies pointing at a target segment
-get_dependencies(target_segment="<dim=value>", metric="<your_metric>")
-  -> [{"source_segment": "<dim=other_value>", "explained": true, "is_real": true,
+get_dependencies(target_segment="dataset=ETTh1|feature=ot", metric="ot")
+  -> [{"source_segment": "dataset=ETTh1|feature=hufl", "explained": true, "is_real": true,
        "lag": ..., "direction": ..., "methods": [...], ...}, ...]
 ```
 
