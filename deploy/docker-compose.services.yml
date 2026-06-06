@@ -52,6 +52,9 @@ services:
       NORN_AGENT_WORKER_URL: ${NORN_AGENT_WORKER_URL:-http://agent:9400}
     volumes:
       - ${NORN_JOBS_DIR:-./jobs}:/jobs:ro
+      # live config: settings come from the repo's config/*.yml (restart to
+      # apply), not from the copy baked into the image at build time
+      - ../config:/app/config:ro
 
   # Read-only MCP server for agents (:9200). Same image as the scheduler.
   mcp:
@@ -65,11 +68,13 @@ services:
       NORN_MCP_HOST: 0.0.0.0
       NORN_DB_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
       NORN_CLICKHOUSE_URL: ${NORN_CLICKHOUSE_URL:-http://norn:${CLICKHOUSE_PASSWORD:-norn}@clickhouse:8123/norn}
+    volumes:
+      - ../config:/app/config:ro   # live config (see scheduler note)
 
   # Switchable LLM judge. Off (profile not started) => deps jobs write evidence
-  # with explained=false. Ollama on the host is reachable via host.docker.internal.
-  # Cloud providers: put the provider switch + secret into deploy/agent.env
-  # (copy agent.env.example; gitignored) — loaded below if present.
+  # with explained=false. SETTINGS (provider/model/output_mode/base_url) live in
+  # config/agent.yml (mounted live below; restart to apply). SECRETS (the
+  # provider API key) live in deploy/agent.env — copy agent.env.example.
   agent:
     build:
       context: ..
@@ -87,10 +92,14 @@ services:
       # requires NORN_DB_PASSWORD), so the worker needs it even though it does
       # not touch ClickHouse itself.
       NORN_DB_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
-      # ${VAR-default} (no colon): unset -> Ollama-on-host default; explicitly
-      # EMPTY (NORN_AGENT_BASE_URL= in deploy/.env) -> stays empty, which lets
-      # openai-api/anthropic clients use their real default endpoints.
+      # Infra translation only (not a setting): agent.yml's localhost Ollama
+      # endpoint is unreachable from inside a container, so rewrite it to the
+      # host gateway. ${VAR-default} (no colon): explicitly EMPTY
+      # (NORN_AGENT_BASE_URL= in deploy/.env) stays empty — required when
+      # agent.yml sets provider: openai-api (which honors base_url).
       NORN_AGENT_BASE_URL: ${NORN_AGENT_BASE_URL-http://host.docker.internal:11434/v1}
+    volumes:
+      - ../config:/app/config:ro   # live config (see scheduler note)
 
 volumes:
   hf-cache: {}

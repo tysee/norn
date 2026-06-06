@@ -18,7 +18,7 @@ the Lightdash bootstrap. Nothing domain-specific lives here; instance policy
 | File | Mechanism — how it reaches a process | Purpose | In git |
 | --- | --- | --- | --- |
 | `deploy/.env` | compose **interpolation**: substitutes `${VAR}` inside the compose YAML; vars do **not** enter containers unless a service's `environment:` maps them | stack knobs: ClickHouse creds, `LIGHTDASH_SECRET` (keep constant!), admin bootstrap values, default demo publish policy, `COMPOSE_IGNORE_ORPHANS` | only `.env.example` |
-| `deploy/agent.env` | **`env_file`** on the `agent` service: injected **wholesale into that one container** (optional — absent file is fine) | the LLM judge's provider switch + secret (`NORN_AGENT_PROVIDER/MODEL/OUTPUT_MODE`, `*_API_KEY`) | only `agent.env.example` |
+| `deploy/agent.env` | **`env_file`** on the `agent` service: injected **wholesale into that one container** (optional — absent file is fine) | the LLM judge's provider **secret only** (`*_API_KEY` / OAuth token); the provider/model/output_mode **settings** live in `config/agent.yml`, mounted live into the container | only `agent.env.example` |
 | `instances/<i>/deploy/.env` | passed explicitly to one command: `lightdash-init` via `--env-file` | which Lightdash project name + dbt dir to publish for THIS instance (`LD_PROJECT_NAME`, `DBT_PROJECT_HOST_DIR`) | only `.env.example` |
 | shell env / k8s Secrets | ordinary process environment | secrets and ad-hoc `NORN_<SECTION>_<FIELD>` overrides for the `norn` CLI and services | never |
 
@@ -32,8 +32,16 @@ publish, `agent.env` = who judges.**
 > defaults with empty strings when unset). Loading all of `deploy/.env` into the
 > agent container instead would hand the LLM judge the Lightdash admin password
 > and stack secrets it has no business seeing. A dedicated `env_file` gives the
-> judge exactly its own variables — nothing more. So: provider config →
-> `cp agent.env.example agent.env`; everything stack-wide → `.env`.
+> judge exactly its own variables — nothing more. So: the provider **key** →
+> `cp agent.env.example agent.env`; the provider **settings** →
+> `config/agent.yml` (mounted live — restart the service to apply); everything
+> stack-wide → `.env`.
+
+**Settings vs secrets.** The norn services (`scheduler`, `mcp`, `agent`) mount
+the repo's `config/` **live** (read-only), overriding the copy baked into the
+image — so changing any `config/*.yml` needs only a `restart` of the service,
+never a rebuild, and env files never carry settings: YAML = settings, env =
+secrets (plus infra translations like the container-reachable Ollama URL).
 
 Where to keep secrets in general is covered in
 [Configuration](../docs/guide/configuration.md#where-to-keep-them-so-they-never-reach-the-repo).

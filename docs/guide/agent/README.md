@@ -233,13 +233,22 @@ For `ollama` see the note above (daemon + pulled model, explicit `base_url`,
 no secret); for `openai-oauth` see the dedicated flow below.
 
 **In Docker (compose):** the judge runs in the `agent` container (the scheduler
-points `NORN_AGENT_WORKER_URL` at `http://agent:9400` by default), so the
-provider config must reach **that container**, not your shell. Copy
-`deploy/agent.env.example` → `deploy/agent.env` (gitignored) and uncomment one
-provider block — the `agent` service loads it automatically. Defaults without
-the file: `ollama` against the **host** daemon via `host.docker.internal:11434`.
+points `NORN_AGENT_WORKER_URL` at `http://agent:9400` by default). The split is
+**YAML = settings, env = secrets**:
+
+1. **Settings** — edit `config/agent.yml` (`provider`, `model`, `output_mode`,
+   `base_url`) as usual: the services mount the repo's `config/` live, so
+   `docker compose -f docker-compose.services.yml restart agent` applies it —
+   no image rebuild.
+2. **Secret** — copy `deploy/agent.env.example` → `deploy/agent.env`
+   (gitignored) and uncomment the one key your provider needs; the `agent`
+   service loads the file automatically. `ollama` needs no key — without the
+   file the judge runs the default provider against the **host** daemon via
+   `host.docker.internal:11434` (compose translates the YAML's localhost
+   endpoint to the container-reachable address).
+
 One catch for `openai-api`: also set `NORN_AGENT_BASE_URL=` (empty) in
-`deploy/.env`, so the compose Ollama default does not leak into the OpenAI
+`deploy/.env`, so the compose Ollama translation does not leak into the OpenAI
 client (`${VAR-…}` semantics keep an explicitly-empty value empty).
 
 ### The `openai-oauth` flow (bearer token instead of an API key)
