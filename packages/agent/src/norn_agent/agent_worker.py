@@ -32,10 +32,23 @@ def create_app(agent=None) -> FastAPI:
     # one agent per process: the model object is built from config/agent.yml lazily,
     # but before the first request — fail-fast on a broken config at startup.
     judge_agent = agent if agent is not None else build_agent()
+    # The worker's own provider/model — used by the client to record correct
+    # provenance (dependency_explanation.llm_model). Only known when we built
+    # from config; an injected agent (tests) leaves it unset.
+    if agent is None:
+        from norn_core.config import get_settings
+
+        _a = get_settings().agent
+        _provider, _model = _a.provider, _a.model
+    else:
+        _provider = _model = None
 
     @app.get("/health")
     def health() -> dict:
-        return {"status": "ok"}
+        out = {"status": "ok"}
+        if _model is not None:
+            out["provider"], out["model"] = _provider, _model
+        return out
 
     @app.post("/judge")
     def judge(req: JudgeRequest) -> dict:
