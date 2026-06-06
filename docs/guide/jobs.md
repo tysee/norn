@@ -48,6 +48,16 @@ Unset tunables (`horizon`, `context_length`, `seasonality`) are filled from
 `forecast.defaults` in [configuration](configuration.md) at run time — explicit
 job values always win.
 
+> **Two mart shapes — don't mix them up.** The forecast `source` is read in
+> **wide** form: the runner selects `ts` plus a column named after the metric
+> (`SELECT ts, <metric> AS val FROM <source> WHERE <dim>=…`), so `source` must
+> have one column per metric (e.g. `fct_ot` with an `ot` column). Dependency
+> jobs and covariate leaders read the **long** contract shape instead:
+> `(ts, metric_name, value, segment_key)` from the `mart` table (default
+> `mart_metric`). A bring-your-own-mart instance typically ships both: a long
+> `mart_metric` plus a narrow wide view per forecast target (see
+> `instances/example/dbt/models/` — `mart_metric.sql` and `fct_orders.sql`).
+
 A `CovariateSpec` (one entry under `covariates`) has:
 
 | field | type | default | meaning |

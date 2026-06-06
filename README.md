@@ -81,9 +81,10 @@ Architecture deep-dive and integrations:
 ## Tests
 
 Requires a local ClickHouse: `docker compose -f deploy/docker-compose.yml up -d clickhouse`,
-then `uv run pytest`. Tests must run against an **isolated database** — point
-`NORN_CLICKHOUSE_URL` at a dedicated test DB (the suite truncates the contract
-tables it touches).
+then `uv run pytest`. The suite runs against an **isolated database** —
+`norn_test` by default (created automatically). To use another DB, point
+`NORN_CLICKHOUSE_URL` at it; the conftest **refuses** any database whose name
+doesn't end in `_test`, because the suite truncates the tables it touches.
 
 ## Contributing
 
