@@ -1,0 +1,18 @@
+# norn-example pipeline — host-cron alternative to the built-in scheduler.
+# Use this if you run norn commands directly on the host rather than via the
+# scheduler container.  Mirrors the schedule in deploy/jobs.yml.
+#
+# Prerequisites on the host:
+#   - norn repo checked out at /path/to/norn
+#   - this instance at /path/to/norn/instances/example (or your renamed copy)
+#   - NORN_CONFIG_DIR set (or passed inline as below)
+#   - NORN_DB_PASSWORD set in the environment or ~/.norn.env
+#
+# Replace /path/to/norn with the actual absolute path on your host.
+#
+# 06:00 forecast (baseline; no TimesFM worker required)
+0 6 * * *  NORN_CONFIG_DIR=/path/to/norn/instances/example/config cd /path/to/norn && uv run norn forecast instances/example/forecasts/orders_baseline.yml
+# 06:30 calibrate baseline
+30 6 * * * NORN_CONFIG_DIR=/path/to/norn/instances/example/config cd /path/to/norn && uv run norn calibrate instances/example/forecasts/orders_baseline.yml
+# Every Monday 05:00 — dependency analysis (LLM judge; ensure provider is available)
+0 5 * * 1  NORN_CONFIG_DIR=/path/to/norn/instances/example/config cd /path/to/norn && uv run norn deps instances/example/forecasts/deps/visits_orders.yml

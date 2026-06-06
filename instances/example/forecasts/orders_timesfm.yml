@@ -1,0 +1,28 @@
+# Forecast job: daily order count, TimesFM 2.5 model.
+# Requires the TimesFM worker running at http://localhost:9100 (configured in
+# config/forecast.yml under timesfm.worker_url).
+#
+# Start the worker first:
+#   docker compose -f docker-compose.services.yml --profile timesfm up -d timesfm
+# If the worker is unreachable the job fails explicitly — there is no silent fallback.
+#
+# fct_orders is a dbt view narrowed to orders rows from mart_metric.
+# The `region` dimension produces one forecast series per region
+# (segment_key = "region=<value>").
+#
+# Run with:
+#   NORN_CONFIG_DIR=instances/example/config \
+#     uv run norn forecast instances/example/forecasts/orders_timesfm.yml
+
+metric: orders          # metric_name stored in forecast_point output rows
+source: fct_orders      # ClickHouse view from dbt (already filtered to orders; columns: ts, region, orders, segment_key)
+grain: daily
+dimensions: [region]    # one forecast series per region; segment_key = "region=<value>"
+horizon: 14             # 14-day-ahead forecast
+context_length: 180     # ~6 months of daily history; TimesFM max_context is 1024 (see config/forecast.yml)
+seasonality: 7          # weekly pattern
+model: timesfm-2.5
+transform: none
+
+# schedule: hint only — the scheduler manifest (deploy/jobs.yml) is the source of truth
+schedule: "15 6 * * *"

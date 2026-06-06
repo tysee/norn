@@ -1,0 +1,150 @@
+%% Norn — ERD (repository tysee/norn)
+%% Invariant: domain-agnostic schema — a generic contract (5 ClickHouse tables) on top of any warehouse;
+%% the concrete metric ("ot"), dimensions (dataset/feature) and segment values below come from the
+%% ETT example instance (instances/ett), not from the platform. The platform ships NO domain defaults.
+%% Stores:  [CH-contract] = ClickHouse contract tables owned/written by norn (schema.sql, 5 tables)
+%%          [CH-mart]     = ClickHouse marts/views built by the instance's dbt project (read by norn)
+erDiagram
+
+    %% ---------- Forecast contract [CH-contract] ----------
+    FORECAST_RUN ||--o{ FORECAST_SEGMENT : evaluates
+    FORECAST_RUN ||--o{ FORECAST_POINT : writes
+    FORECAST_SEGMENT ||--o{ FORECAST_POINT : "groups (metric_name, segment_key)"
+
+    FORECAST_RUN {
+        string forecast_run_id PK
+        string forecast_job "job path / name"
+        string status "running | success | failed"
+        string model_name "baseline-seasonal-naive | timesfm-2.5"
+        string model_version
+        datetime started_at
+        datetime finished_at "Nullable"
+        uint32 segments_total
+        uint32 segments_skipped
+        string error "Nullable"
+        datetime created_at "PARTITION BY toYYYYMM(created_at)"
+    }
+
+    FORECAST_POINT {
+        string forecast_run_id FK
+        string metric_name "example (ETT): ot"
+        string segment_key "example (ETT): dataset=ETTh1|feature=ot"
+        datetime forecast_ts
+        uint16 horizon_step
+        float y_hat
+        float p10
+        float p50
+        float p90
+        float y_actual "Nullable (filled later for scoring)"
+        string model_name
+        datetime created_at
+    }
+
+    FORECAST_SEGMENT {
+        string forecast_run_id FK
+        string metric_name
+        string segment_key
+        uint32 n_points
+        uint8 is_sparse
+        float wape
+        float mape
+        float coverage "mean(p10<=actual<=p90)"
+        float bias
+        datetime created_at
+    }
+
+    %% ---------- Dependency contract [CH-contract] ----------
+    METRIC_DEPENDENCY ||--o{ DEPENDENCY_EXPLANATION : "explained by (per source->target)"
+
+    METRIC_DEPENDENCY {
+        string analysis_run_id PK
+        string metric_name "example (ETT): reading"
+        string source_segment "example (ETT): dataset=ETTh1|feature=hufl"
+        string target_segment "example (ETT): dataset=ETTh1|feature=ot"
+        string method "lagged_cross_correlation | granger"
+        int16 lag "shift in grain units"
+        float score "corr strength / -log10(p)"
+        string direction "source_leads | target_leads | co_move | inconclusive"
+        float p_value "Nullable"
+        float confidence
+        datetime window_start
+        datetime window_end
+        datetime created_at
+    }
+
+    DEPENDENCY_EXPLANATION {
+        string analysis_run_id FK
+        string metric_name
+        string source_segment
+        string target_segment
+        int16 lag
+        string direction
+        uint8 is_real "LLM verdict; 1 + direction=source_leads => XReg covariate"
+        float confidence
+        string explanation "LLM narrative"
+        string caveats "correlation != causation"
+        string change_note "drift vs previous run"
+        string llm_model
+        datetime created_at
+    }
+
+    %% ---------- Instance marts/views (dbt-built, read by norn) [CH-mart] ----------
+    %% Shown for the ETT example instance (instances/ett/dbt/models). The platform reads
+    %% the long store `mart_metric` for series + covariates; Lightdash reads the overlay views.
+    MART_METRIC ||--o{ FCT_OT : "feature='ot'"
+    MART_METRIC ||--o{ ACTUAL_VS_FORECAST : "actual side"
+    FORECAST_POINT ||--o{ ACTUAL_VS_FORECAST : "forecast side"
+    FORECAST_SEGMENT ||--o{ CALIBRATION : "latest run per model"
+    METRIC_DEPENDENCY ||--o{ FEATURE_LEADS : evidence
+    DEPENDENCY_EXPLANATION ||--o{ FEATURE_LEADS : verdict
+
+    MART_METRIC {
+        datetime ts "[CH-mart] dbt view; wide->long unpivot of 7 ETT channels"
+        string dataset "ETTh1 | ETTh2 (hourly only)"
+        string feature "hufl | hull | mufl | mull | lufl | lull | ot"
+        string metric_name "constant 'reading'"
+        float value "channel reading"
+        string segment_key "dataset=<ds>|feature=<feat>"
+    }
+
+    FCT_OT {
+        datetime ts "[CH-mart] mart_metric where feature='ot'"
+        string dataset
+        string segment_key
+        float ot "the forecast target"
+    }
+
+    ACTUAL_VS_FORECAST {
+        datetime ts "[CH-mart] dbt view: history + latest non-backtest run"
+        string metric_name
+        string segment_key
+        float y_hat
+        float p10
+        float p90
+        float y_actual
+        float error_abs
+    }
+
+    CALIBRATION {
+        string model_name "[CH-mart] e.g. timesfm-2.5+xreg (backtest)"
+        string segment_key
+        string metric_name
+        uint32 n_points
+        uint8 is_sparse
+        float coverage_pct "target ~80"
+        float mape_pct
+        float wape_pct
+        float bias
+    }
+
+    FEATURE_LEADS {
+        string source_segment "[CH-mart] latest verdict per source->OT pair"
+        string target_segment
+        int16 lag
+        string direction
+        uint8 is_real
+        float confidence
+        string explanation
+        float xcorr_score "lagged_cross_correlation evidence"
+        float granger_p "granger evidence"
+    }

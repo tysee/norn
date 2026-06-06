@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: mart_metric
+    description: >
+      Long-format store: one row per (ts, region, type) with the daily count in a
+      single `value` column.  type is one of visits | orders.  metric_name is the
+      constant 'count'.  Used by the dependency-analysis agent
+      (forecasts/deps/visits_orders.yml) to test whether visits leads orders.
+      Aggregating `value` across type is meaningless — always filter to one type,
+      or use fct_orders for forecast work.
+    columns:
+      - name: ts
+        description: "Observation date (UTC, daily)."
+        tests:
+          - not_null
+      - name: metric_name
+        description: "Constant 'count' (norn long-store contract column)."
+        tests:
+          - not_null
+      - name: value
+        description: "Daily count — visits or orders depending on type."
+        tests:
+          - not_null
+      - name: segment_key
+        description: "Canonical segment key, e.g. region=north|type=orders."
+        tests:
+          - not_null
+
+  - name: fct_orders
+    description: >
+      Daily order count per region, shaped for the norn forecast layer.
+      Filtered to orders only (type='orders' from mart_metric).
+      segment_key encodes region only: "region=<value>".
+      Source table for forecasts/orders_baseline.yml and orders_timesfm.yml.
+      The metric column is named `orders` (matches metric: orders in the job YAML).
+    columns:
+      - name: ts
+        description: "Observation date (UTC, daily)."
+        tests:
+          - not_null
+      - name: orders
+        description: "Daily order count (column named after the forecast metric)."
+        tests:
+          - not_null
+      - name: segment_key
+        description: "Canonical segment key, e.g. region=north."
+        tests:
+          - not_null

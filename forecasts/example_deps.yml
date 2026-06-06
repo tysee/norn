@@ -1,0 +1,10 @@
+# Abstract bring-your-own-mart dependency-job — no instance required.
+# Real worked example: instances/ett/forecasts/deps/hufl_etth1.yml
+# Copyable starting template: instances/example/forecasts/
+source_segment: segment=A
+target_segment: segment=B
+metric: value
+mart: mart_metric
+max_lag: 10
+context_length: 512
+methods: [lagged_cross_correlation, granger]

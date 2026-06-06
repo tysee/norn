@@ -1,0 +1,12 @@
+# Abstract bring-your-own-mart forecast-job — no instance required.
+# Real worked example: instances/ett/forecasts/ot_baseline.yml
+# Copyable starting template: instances/example/forecasts/
+metric: sales
+source: analytics.mart_metric
+grain: daily
+dimensions: [region]
+horizon: 14
+context_length: 180
+seasonality: 7
+model: baseline-seasonal-naive
+schedule: "0 6 * * *"

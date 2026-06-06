@@ -1,0 +1,62 @@
+%% Norn — sidecar architecture for Lightdash
+flowchart TB
+
+    analyst([Analyst / Agent])
+    cli["CLI / orchestrator (typer)<br/>norn forecast | calibrate | deps |<br/>schema-apply | mcp | scheduler | up"]
+
+    subgraph monorepo["Monorepo: tysee/norn (5 packages + cli)"]
+        direction TB
+        core["packages/core<br/>config + contract + ClickHouse client"]
+        integ["packages/integration<br/>contract schema (schema.sql, 5 tables)"]
+        forecast["packages/forecast<br/>forecasters + calibration + covariates<br/>+ MCP server + TimesFM worker"]
+        agent["packages/agent<br/>lead/lag analysis + LLM judge"]
+        scheduler["packages/scheduler<br/>APScheduler cron + FastAPI API"]
+        mcp["MCP server :9200<br/>(FastMCP, 11 read tools)"]
+        tfmworker["TimesFM worker :9100<br/>(FastAPI, torch container)"]
+        agentworker["agent worker :9400<br/>(FastAPI, switchable LLM judge)"]
+    end
+
+    subgraph existing["Existing stack (not forked)"]
+        direction TB
+        lightdash["Lightdash :8080<br/>BI / dashboards / semantic"]
+        ldpg[("Lightdash Postgres<br/>+ minio + headless-browser")]
+        ch[("ClickHouse :8123<br/>contract tables + marts + views")]
+        dbt["dbt project (instance)<br/>mart_metric / fct_ot / overlays"]
+    end
+
+    llm["LLM provider<br/>ollama | openai | openrouter | anthropic"]
+
+    analyst --> cli
+    cli --> forecast
+    cli --> agent
+    cli --> scheduler
+    cli --> integ
+
+    integ -->|schema-apply / prepare_schema| ch
+    dbt -->|builds marts + contract tables| ch
+
+    forecast -->|extract series| ch
+    forecast -->|write forecast_run/point/segment| ch
+    forecast -->|HTTP /forecast| tfmworker
+
+    scheduler -->|run_action: forecast/calibrate/deps| forecast
+    scheduler -->|run_action: deps| agent
+
+    agent -->|read mart_metric series| ch
+    agent -->|write metric_dependency| ch
+    agent -->|judge in-process| llm
+    agent -->|HTTP /judge (optional)| agentworker
+    agentworker -->|explanation| llm
+    agent -->|write dependency_explanation| ch
+
+    mcp -->|read forecast_* / dependency_*| ch
+    analyst -->|MCP tools (streamable-http)| mcp
+
+    lightdash -->|reads dbt overlay views| ch
+    lightdash --> ldpg
+    analyst -->|views dashboard| lightdash
+
+    classDef ours fill:#E8C8BA,stroke:#B8553E,color:#1C1814;
+    classDef ext fill:#EFE6CF,stroke:#8C8275,color:#1C1814;
+    class core,integ,forecast,agent,scheduler,mcp,tfmworker,agentworker,cli ours;
+    class lightdash,ldpg,ch,dbt ext;

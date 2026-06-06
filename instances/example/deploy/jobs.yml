@@ -1,0 +1,27 @@
+# Built-in norn scheduler manifest for the example instance.
+#
+# Launch (mount the instance ROOT into /jobs):
+#   NORN_JOBS_DIR=../instances/example \
+#     docker compose -f docker-compose.services.yml --profile scheduler up -d scheduler
+#
+# This file is then available as /jobs/deploy/jobs.yml, and forecast jobs as
+# /jobs/forecasts/... (compose command: ["scheduler", "--manifest", "/jobs/deploy/jobs.yml"]).
+#
+# Adjust the cron expressions to your data-refresh cadence.
+# For a host-cron alternative, see deploy/crontab.sample.
+
+jobs:
+  - name: orders-baseline
+    action: forecast
+    job: /jobs/forecasts/orders_baseline.yml
+    schedule: "0 6 * * *"      # daily at 06:00 UTC; no TimesFM worker required
+
+  - name: orders-baseline-calibrate
+    action: calibrate
+    job: /jobs/forecasts/orders_baseline.yml
+    schedule: "30 6 * * *"     # 30 min after the forecast; calibration is cheap
+
+  - name: deps-visits-orders
+    action: deps
+    job: /jobs/forecasts/deps/visits_orders.yml
+    schedule: "0 5 * * 1"     # weekly on Monday at 05:00 UTC; deps are expensive (LLM judge)

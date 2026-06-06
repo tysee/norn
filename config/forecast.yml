@@ -1,0 +1,34 @@
+# config/forecast.yml
+# Platform defaults read from NORN_CONFIG_DIR (default: config/); an instance may ship its own
+# config dir and point NORN_CONFIG_DIR at it (e.g. NORN_CONFIG_DIR=instances/example/config).
+# Env vars (NORN_FORECAST_*) override any value here.
+# Parameters of the norn platform's forecast subsystem: default values for jobs,
+# the set of forecast quantiles, TimesFM model worker settings, and calibration parameters.
+# Values here are platform defaults; a specific job-YAML may override them.
+
+# Forecast defaults, applied if a job does not set them.
+defaults:
+  horizon: 30          # forecast depth ahead, in series steps
+  context_length: 512  # length of the historical window (number of points) fed to the model
+  seasonality: 7       # series seasonality period, in steps (e.g. 7 = weekly)
+
+# Forecast quantiles: lower/median/upper — form the uncertainty intervals.
+quantiles: [0.1, 0.5, 0.9]
+
+# Settings of the external TimesFM model worker.
+timesfm:
+  worker_url: "http://localhost:9100"  # URL of the HTTP worker that runs TimesFM inference
+  max_context: 1024                     # upper limit of the context length accepted by the model
+  max_horizon: 1024                     # upper limit of the model's forecast depth
+
+# Rolling-origin calibration parameters.
+calibration:
+  n_cutoffs: 8   # number of origins for rolling-origin; >=8 for a stable estimate (3 gave noisy metrics)
+
+# covariates (XReg): horizon_policy strict (lag>=horizon) | ffill (extend the leader); XReg mode
+covariates:
+  horizon_policy: strict
+  xreg_mode: "xreg + timesfm"  # TimesFM 2.5 format (with spaces): "xreg + timesfm" | "timesfm + xreg"
+
+# How many months to retain the contract tables (TTL on top of PARTITION BY month). 0 = no auto-deletion.
+retention_months: 12

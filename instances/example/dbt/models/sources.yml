@@ -1,0 +1,17 @@
+version: 2
+sources:
+  - name: raw_example
+    # TODO: replace with your actual ClickHouse database and schema names.
+    # CH_SCHEMA lets tests read from an isolated DB (e.g. norn_example_test).
+    schema: "{{ env_var('CH_SCHEMA', 'norn_example') }}"
+    tables:
+      # TODO: replace raw_example with your raw ingestion table.
+      # Expected columns (at minimum): ts (DateTime), region (String),
+      # visits (Int64 or Float64), orders (Int64 or Float64).
+      # Ingest your raw data here before running `dbt run`.
+      - name: raw_example
+      # norn contract tables (written by the platform, read by analytics models)
+      - name: forecast_point
+      - name: forecast_segment
+      - name: dependency_explanation
+      - name: metric_dependency

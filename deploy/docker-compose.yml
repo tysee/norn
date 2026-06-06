@@ -1,0 +1,132 @@
+# INFRA stack only: ClickHouse + the Lightdash BI stack (+ one-shot init jobs).
+# norn's own services (timesfm / scheduler / mcp / agent) live in
+# docker-compose.services.yml — SAME compose project, separate file, so that
+# `docker compose -f docker-compose.services.yml down` can never take the
+# shared infra down with it (the gotcha that once removed Lightdash).
+# NEVER pass --remove-orphans to either file: each sees the other's containers
+# as "orphans" of the shared project. COMPOSE_IGNORE_ORPHANS=true in .env
+# silences the cosmetic warning.
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: norn-clickhouse
+    # Local dev/test only: ports bound to loopback so the dev-convention
+    # password is never reachable off-host. Cloud deploys use env-var secrets
+    # (Plan 2+ roadmap), not this file.
+    ports:
+      - "127.0.0.1:8123:8123"
+      # Native protocol on a non-default host port (default 9000 commonly clashes
+      # with minio/other local services); HTTP 8123 is what dbt/Lightdash use.
+      - "127.0.0.1:9009:9000"
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-norn}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-norn}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-norn}
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+
+  lightdash-db:
+    image: pgvector/pgvector:pg15   # Lightdash metadata DB needs the pgvector extension
+    container_name: norn-lightdash-db
+    environment:
+      POSTGRES_USER: lightdash
+      POSTGRES_PASSWORD: lightdash
+      POSTGRES_DB: lightdash
+    volumes:
+      - lightdash-db-data:/var/lib/postgresql/data
+
+  headless-browser:
+    image: browserless/chrome:latest   # Lightdash's headless browser (browserless API on :3000)
+    container_name: norn-headless-browser
+
+  # Lightdash (latest) requires S3-compatible storage; local MinIO covers it.
+  minio:
+    image: minio/minio:latest
+    container_name: norn-minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: lightdash
+      MINIO_ROOT_PASSWORD: lightdash-minio-pw
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: norn-minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until /usr/bin/mc alias set local http://minio:9000 lightdash lightdash-minio-pw; do sleep 2; done;
+      /usr/bin/mc mb -p local/lightdash || true;
+      exit 0;"
+
+  lightdash:
+    image: lightdash/lightdash:latest
+    platform: linux/amd64              # lightdash image is amd64-only; emulate on Apple Silicon
+    container_name: norn-lightdash
+    depends_on:
+      - lightdash-db
+      - headless-browser
+      - clickhouse
+      - minio
+    environment:
+      PGHOST: lightdash-db
+      PGPORT: 5432
+      PGUSER: lightdash
+      PGPASSWORD: lightdash
+      PGDATABASE: lightdash
+      LIGHTDASH_SECRET: ${LIGHTDASH_SECRET:-local-dev-secret}
+      SECURE_COOKIES: "false"
+      TRUST_PROXY: "true"
+      SITE_URL: ${SITE_URL:-http://localhost:8080}
+      PORT: "8080"
+      HEADLESS_BROWSER_HOST: headless-browser
+      HEADLESS_BROWSER_PORT: "3000"
+      DBT_PROJECT_DIR: /usr/app/dbt
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: lightdash
+      S3_ACCESS_KEY: lightdash
+      S3_SECRET_KEY: lightdash-minio-pw
+      S3_FORCE_PATH_STYLE: "true"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ${DBT_PROJECT_HOST_DIR:-./dbt}:/usr/app/dbt
+
+  # One-shot headless setup: registers the admin, mints a PAT, runs dbt, and
+  # creates the Lightdash project (warehouse + dbt connection) automatically.
+  # Opt-in so it never re-runs on a plain `up`:
+  #   docker compose --profile setup run --rm lightdash-init
+  lightdash-init:
+    build:
+      context: .
+      dockerfile: lightdash-init.Dockerfile
+    container_name: norn-lightdash-init
+    profiles: ["setup"]
+    depends_on:
+      - lightdash
+      - clickhouse
+    environment:
+      LIGHTDASH_URL: http://lightdash:8080
+      SITE_URL: ${SITE_URL:-http://localhost:8080}
+      DBT_PROJECT_DIR: /usr/app/dbt
+      CH_HOST: ${CH_HOST:-clickhouse}
+      LD_ADMIN_EMAIL: ${LD_ADMIN_EMAIL:-admin@norn.local}
+      LD_ADMIN_PASSWORD: ${LD_ADMIN_PASSWORD:-norn-admin-pw1}
+      LD_ADMIN_FIRST_NAME: ${LD_ADMIN_FIRST_NAME:-Norn}
+      LD_ADMIN_LAST_NAME: ${LD_ADMIN_LAST_NAME:-Admin}
+      LD_ORG_NAME: ${LD_ORG_NAME:-Norn}
+      LD_PROJECT_NAME: ${LD_PROJECT_NAME:-norn-demo}
+    volumes:
+      - ${DBT_PROJECT_HOST_DIR:-./dbt}:/usr/app/dbt
+
+volumes:
+  clickhouse-data: {}
+  lightdash-db-data: {}
+  minio-data: {}

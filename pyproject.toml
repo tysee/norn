@@ -1,0 +1,22 @@
+[project]
+name = "norn"
+version = "0.0.0"
+requires-python = ">=3.12"
+description = "norn — vendor-neutral forecasting layer (platform)"
+
+[tool.uv.workspace]
+members = ["packages/*", "cli"]
+
+[tool.uv.sources]
+norn-core = { workspace = true }
+norn-integration = { workspace = true }
+norn-forecast = { workspace = true }
+norn-agent = { workspace = true }
+norn-scheduler = { workspace = true }
+norn-cli = { workspace = true }
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

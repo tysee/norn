@@ -1,0 +1,10 @@
+# instances/example/config/mcp.yml
+# MCP server listen address for this instance.
+# This file is loaded when NORN_CONFIG_DIR=instances/example/config (or your
+# renamed copy of this directory).
+#
+# Environment-variable overrides use the NORN_MCP_ prefix
+# (e.g. NORN_MCP_HOST=0.0.0.0 to expose the MCP server beyond localhost).
+
+host: 127.0.0.1   # interface the MCP server listens on (127.0.0.1 = local only)
+port: 9200        # TCP port of the MCP server (streamable-HTTP)

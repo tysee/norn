@@ -1,0 +1,25 @@
+# Dependency job: does site visits lead orders in region "north"?
+#
+# Lead/lag question: we test whether the visits time series (source_segment)
+# precedes the orders time series (target_segment) by 1..max_lag days.
+#
+# Both series share metric_name "count" in mart_metric, distinguished by the
+# `type` dimension (segment_key = "region=<value>|type=<value>").
+# See dbt/models/mart_metric.sql for how visits and orders are unpivoted into
+# this shared long-format store.
+#
+# A positive verdict (is_real=true, direction=source_leads) means visits
+# reliably precedes orders — a useful XReg covariate for the forecast.
+# Once confirmed, add it to forecasts/orders_timesfm.yml under `covariates:`.
+#
+# Run with:
+#   NORN_CONFIG_DIR=instances/example/config \
+#     uv run norn deps instances/example/forecasts/deps/visits_orders.yml
+
+source_segment: "region=north|type=visits"   # candidate driver: site visits in the north region
+target_segment: "region=north|type=orders"   # forecast target: orders in the north region
+metric: count                # metric_name in mart_metric shared by both visits and orders rows
+mart: mart_metric            # long store to read from (ts, metric_name, value, segment_key)
+max_lag: 10                  # search up to 10-day lead/lag
+context_length: 180          # ~6 months of daily history for the statistical tests
+methods: [lagged_cross_correlation, granger]

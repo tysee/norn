@@ -1,0 +1,3 @@
+[submodule "instances/ett"]
+	path = instances/ett
+	url = git@github.com:tysee/norn-ett-instance.git

@@ -1,0 +1,14 @@
+norn:
+  target: local
+  outputs:
+    local:
+      type: clickhouse
+      driver: http
+      # 'clickhouse' (compose service DNS) for the Lightdash container; override
+      # CH_HOST=localhost when running dbt from the host CLI.
+      host: "{{ env_var('CH_HOST', 'clickhouse') }}"
+      port: 8123
+      user: norn
+      password: norn
+      schema: norn
+      secure: false

@@ -1,0 +1,7 @@
+version: 2
+sources:
+  - name: norn
+    schema: norn
+    tables:
+      - name: raw_metric     # populated by your instance (out of scope here)
+      - name: forecast_point # written by the norn worker

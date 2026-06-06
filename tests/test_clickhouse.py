@@ -1,0 +1,66 @@
+import pytest
+
+from norn_core.clickhouse import _safe_identifier, parse_dsn
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["value", "_col", "mart_metric", "schema.table", "a1_b2.c3"],
+)
+def test_safe_identifier_accepts_valid(name):
+    assert _safe_identifier(name) == name
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["t; DROP TABLE x", "a b", "1abc", "", "col-name", "drop table", "a;b"],
+)
+def test_safe_identifier_rejects_injection(name):
+    with pytest.raises(ValueError):
+        _safe_identifier(name)
+
+
+def test_parse_dsn_full():
+    cfg = parse_dsn("http://norn:secret@db.example.com:8123/analytics")
+    assert cfg == {
+        "host": "db.example.com",
+        "port": 8123,
+        "username": "norn",
+        "password": "secret",
+        "database": "analytics",
+        "secure": False,
+    }
+
+
+def test_parse_dsn_https_default_port():
+    cfg = parse_dsn("https://user:pw@host/db")
+    assert cfg["port"] == 8443
+    assert cfg["secure"] is True
+
+
+def test_parse_dsn_requires_database():
+    with pytest.raises(ValueError):
+        parse_dsn("http://user:pw@host:8123/")
+
+
+def test_parse_dsn_error_does_not_leak_credentials():
+    # The error must never echo the DSN — it carries the password.
+    with pytest.raises(ValueError) as exc:
+        parse_dsn("http://user:supersecret@host:8123/")
+    assert "supersecret" not in str(exc.value)
+
+
+def test_get_client_builds_from_settings(monkeypatch, tmp_path):
+    # No DSN env -> client config comes from settings.database fields.
+    import norn_core.clickhouse as ch
+    from norn_core.config import DatabaseSettings
+
+    monkeypatch.delenv("NORN_CLICKHOUSE_URL", raising=False)
+    captured = {}
+    monkeypatch.setattr(ch.clickhouse_connect, "get_client", lambda **kw: captured.update(kw) or "CLIENT")
+    monkeypatch.setattr(ch, "_db_settings", lambda: DatabaseSettings(
+        host="h", port=8123, user="u", password="p", database="d", secure=False, manage_schema=True, dsn=None
+    ))
+    out = ch.get_client()
+    assert out == "CLIENT"
+    assert captured["host"] == "h" and captured["database"] == "d" and captured["username"] == "u"

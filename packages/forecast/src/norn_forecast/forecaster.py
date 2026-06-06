@@ -1,0 +1,141 @@
+"""
+packages/forecast/src/norn_forecast/forecaster.py
+
+A unified forecaster interface and its adapters for the norn platform. Hides behind a common
+Protocol two implementations — the lightweight baseline and the heavy TimesFM — so that the runner and
+calibration do not depend on the model, and the choice is made by the job.model field. TimesFM
+is moved out into a separate HTTP worker, so torch is not pulled into this process.
+
+Classes/methods:
+- Forecaster — Protocol: forecast(values, horizon) -> list[dict] (rows with
+  horizon_step/y_hat/p10/p50/p90).
+- BaselineForecaster — a wrapper around seasonal_naive_forecast (seasonal-naive).
+- TimesFMForecaster — an HTTP client to the torch worker: POST /forecast, no torch here.
+  Owns the httpx.Client when it is not injected from outside: close()/the context manager
+  close the connection pool only for a client it owns.
+- make_forecaster(job, timesfm_url=None) -> Forecaster — factory: by job.model
+  returns TimesFM (url from config) or baseline (with the job's seasonality).
+"""
+from __future__ import annotations
+
+import math
+from typing import Protocol
+
+import httpx
+
+from norn_core.contract import ForecastJob
+from norn_forecast.baseline import seasonal_naive_forecast
+
+
+class Forecaster(Protocol):
+    def forecast(
+        self,
+        values: list[float],
+        horizon: int,
+        covariates: dict[str, list[float]] | None = None,
+    ) -> list[dict]: ...
+
+
+class BaselineForecaster:
+    def __init__(
+        self,
+        seasonality: int = 7,
+        quantiles: tuple[float, float, float] = (0.1, 0.5, 0.9),
+    ) -> None:
+        self.seasonality = seasonality
+        self.quantiles = quantiles
+
+    def forecast(
+        self,
+        values: list[float],
+        horizon: int,
+        covariates: dict[str, list[float]] | None = None,
+    ) -> list[dict]:
+        # Baseline (seasonal-naive) has no notion of predictors: covariates are ignored.
+        return seasonal_naive_forecast(values, horizon, self.seasonality, self.quantiles)
+
+
+class TimesFMForecaster:
+    def __init__(
+        self,
+        base_url: str,
+        client: httpx.Client | None = None,
+        quantiles: tuple[float, ...] = (0.1, 0.5, 0.9),
+    ) -> None:
+        self._base = base_url.rstrip("/")
+        # Own the client only when we created it; an injected client is the
+        # caller's to close (so we never tear down a shared connection pool).
+        self._owns_client = client is None
+        self._client = client or httpx.Client(timeout=60.0)
+        self._quantiles = list(quantiles)
+
+    def forecast(
+        self,
+        values: list[float],
+        horizon: int,
+        covariates: dict[str, list[float]] | None = None,
+    ) -> list[dict]:
+        payload: dict = {
+            "values": values,
+            "horizon": horizon,
+            "quantiles": self._quantiles,
+        }
+        # Send covariates only when present so the plain-forecast path is byte-identical.
+        if covariates:
+            payload["dynamic_numerical_covariates"] = covariates
+        resp = self._client.post(f"{self._base}/forecast", json=payload)
+        resp.raise_for_status()
+        return resp.json()["rows"]
+
+    def close(self) -> None:
+        """Close the underlying httpx.Client only if this forecaster owns it."""
+        if self._owns_client:
+            self._client.close()
+
+    def __enter__(self) -> "TimesFMForecaster":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+
+class LogTransformForecaster:
+    """Wraps a forecaster to predict in log-space: log the (positive) target on the
+    way in, exp the point forecast and every quantile on the way out. Suits positive
+    multiplicative series (prices): no negative forecasts and multiplicatively
+    symmetric intervals. Falls back to the base forecaster if any value is <= 0.
+    Backtests measurably better on daily BTC/TON close (lower MAPE, esp. short horizon)."""
+
+    _QUANTS = ("y_hat", "p10", "p50", "p90")
+
+    def __init__(self, base: Forecaster) -> None:
+        self._base = base
+
+    def forecast(
+        self,
+        values: list[float],
+        horizon: int,
+        covariates: dict[str, list[float]] | None = None,
+    ) -> list[dict]:
+        if any(v <= 0 for v in values):
+            return self._base.forecast(values, horizon, covariates=covariates)
+        log_values = [math.log(v) for v in values]
+        rows = self._base.forecast(log_values, horizon, covariates=covariates)
+        return [{**r, **{k: math.exp(r[k]) for k in self._QUANTS if k in r}} for r in rows]
+
+
+def make_forecaster(job: ForecastJob, timesfm_url: str | None = None) -> Forecaster:
+    from norn_core.config import get_settings
+
+    if job.model == "timesfm-2.5":
+        if timesfm_url is None:
+            timesfm_url = get_settings().forecast.timesfm.worker_url
+        q = tuple(get_settings().forecast.quantiles)
+        base: Forecaster = TimesFMForecaster(timesfm_url, quantiles=q)
+    else:
+        q = tuple(get_settings().forecast.quantiles)
+        base = BaselineForecaster(job.seasonality if job.seasonality is not None else 7, q)
+
+    if getattr(job, "transform", "none") == "log":
+        return LogTransformForecaster(base)
+    return base
