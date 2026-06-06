@@ -224,3 +224,5 @@ instances/crypto/
 
 .playwright-mcp/
 docs/prd/
+.claude/
+docs/specs/

@@ -131,6 +131,15 @@ light platform image; the LLM judge gets its own light image.
 The platform image is light by design: `torch`/`jax` live in the TimesFM worker image,
 and the LLM provider lives behind the agent worker (or the provider's own HTTP API).
 
+Two design boundaries worth knowing as an operator:
+
+- **All state lives in ClickHouse** — every container is stateless and
+  restartable; there is nothing to back up or migrate on the service side.
+- **The scheduler runs norn jobs only** (forecast / calibrate / deps). Ingest,
+  dbt runs, and Lightdash deploys stay external (your cron/CI) by design.
+  Retries are in-process and not persisted — a restart drops a pending retry,
+  and the next cron tick is the recovery mechanism.
+
 ### Compose: infra vs services (two files, one project)
 
 norn's services live in a **separate compose file** from the infra so that taking
