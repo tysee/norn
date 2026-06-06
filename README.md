@@ -81,4 +81,46 @@ Architecture deep-dive and integrations:
 ## Tests
 
 Requires a local ClickHouse: `docker compose -f deploy/docker-compose.yml up -d clickhouse`,
-then `uv run pytest`.
+then `uv run pytest`. Tests must run against an **isolated database** — point
+`NORN_CLICKHOUSE_URL` at a dedicated test DB (the suite truncates the contract
+tables it touches).
+
+## Contributing
+
+Contributions are welcome. The short version:
+
+1. **Branch flow:** feature branches target `dev` (`feature/*` / `fix/*` → `dev`);
+   `main` only receives promoted releases.
+2. **Keep the platform domain-agnostic.** No domain hardcode in `packages/*` or
+   `cli` — no built-in metrics, dimensions, ingestion formats, or prompts.
+   Domain examples are allowed only in tests, docs, and `*example*` files;
+   real domain logic belongs in an [instance](instances/example).
+3. **Tests:** run the suite against an isolated ClickHouse (see above) and add
+   coverage for what you change. Comments, docs, commit messages — in English.
+4. **Docs:** if you change behavior, update the matching page — each package
+   has its own reference under [`docs/guide/`](docs/guide/README.md).
+
+Open an issue first for anything bigger than a fix, so the design can be
+discussed before you invest time.
+
+## Inspiration
+
+norn is inspired by what production forecasting takes at scale — e.g. Uber's
+[Scaling Real-Time Traffic Forecasting with a Graph-Aware Transformer](https://www.uber.com/us/en/blog/scaling-real-time-traffic/)
+(DeepETT): the hard parts are not the model but the operations around it —
+calibration drift, freshness, and trust in the numbers. norn brings that
+discipline to any warehouse on open components: quantile bands instead of point
+guesses, rolling-origin backtesting before you rely on a forecast, and explicit
+failure modes instead of silent fallbacks.
+
+## License
+
+[MIT](LICENSE). Notes:
+
+- The platform is provided **as is**, without warranty of any kind (see the
+  license text).
+- Submodule instances and third-party components keep their own licenses —
+  e.g. TimesFM weights (Apache-2.0, downloaded from Hugging Face at worker
+  build/run time), Lightdash (MIT), dbt (Apache-2.0), ClickHouse (Apache-2.0).
+  Datasets used by example instances carry their own terms (see the instance
+  README, e.g. the ETT dataset license note).
