@@ -193,6 +193,29 @@ as `LLMUnavailable` at judge time (explicit degradation), not at config load.
 > (`ollama pull <model>`). `base_url` must point at the Ollama OpenAI-compatible
 > endpoint — there is no implicit fallback in code.
 
+### The `openai-oauth` flow (bearer token instead of an API key)
+
+`openai-oauth` is for authenticating with an **OAuth access token** (e.g. from a
+ChatGPT subscription) instead of a platform `sk-` API key. norn passes
+`NORN_OPENAI_OAUTH_TOKEN` as the bearer to an OpenAI-compatible client, plus
+your `base_url` if set. The flow:
+
+1. **Obtain a token** via an OAuth login of an OpenAI client — e.g. the Codex
+   CLI: `codex login` opens a browser OAuth flow and stores tokens in
+   `~/.codex/auth.json`; extract the access token:
+   `export NORN_OPENAI_OAUTH_TOKEN="$(jq -r '.tokens.access_token' ~/.codex/auth.json)"`.
+2. **Switch the provider** (env over YAML):
+   `NORN_AGENT_PROVIDER=openai-oauth`, `NORN_AGENT_MODEL=<model your plan allows>`,
+   `NORN_AGENT_OUTPUT_MODE=tool`.
+3. **Set `base_url` to an endpoint that accepts the bearer.** This is the
+   catch: the standard `api.openai.com/v1` only accepts `sk-` API keys —
+   OAuth tokens are rejected there. Point `NORN_AGENT_BASE_URL` at the
+   OAuth-accepting endpoint your token was issued for (this is exactly why
+   `openai-oauth` exists as a separate provider next to `openai-api`).
+4. **Tokens expire.** The issuing client (e.g. Codex CLI) refreshes them on
+   use; on a 401, re-read the token from its auth store — no browser re-login
+   needed until the refresh token itself expires.
+
 ## See also
 
 - [norn-core](../core/README.md) — the shared config loader (`AgentSettings`)
