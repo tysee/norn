@@ -239,11 +239,12 @@ all three actions. A restart clears the map; `forecast_run` remains the durable 
 | `NORN_CLICKHOUSE_URL` | scheduler, MCP | full ClickHouse DSN (overrides `database.yml`) |
 | `NORN_DB_PASSWORD` | scheduler, MCP, agent worker | ClickHouse password (the agent worker needs it because settings load eagerly, even though it never touches ClickHouse) |
 
-To run the judge against a **cloud LLM provider**, copy `deploy/agent.env.example`
-→ `deploy/agent.env` (gitignored) and uncomment one provider block (switch +
-model + secret) — the `agent` service loads the file automatically when present.
-See the [norn-agent page](agent/README.md#per-provider-setup) for the
-per-provider details.
+To run the judge against a **cloud LLM provider**: set the provider/model in
+`config/agent.yml` (the services mount `config/` live — a `restart` applies it,
+no rebuild) and put the provider **key** into `deploy/agent.env` (copy
+`agent.env.example`; gitignored) — the `agent` service loads it automatically.
+YAML = settings, env = secrets. See the
+[norn-agent page](agent/README.md#per-provider-setup) for per-provider details.
 
 ---
 

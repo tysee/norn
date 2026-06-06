@@ -113,7 +113,7 @@ Pick by scenario — all three locations are outside version control (`.env` and
 | Scenario | Put secrets in |
 | --- | --- |
 | Local CLI runs (`norn forecast` / `deps` / …) | your shell profile (`~/.zshenv`), or a [direnv](https://direnv.net) `.envrc` in the repo root |
-| Docker services (compose) | `deploy/.env` for the stack (compose interpolation) and `deploy/agent.env` for the LLM judge's provider switch + key (loaded by the `agent` service; copy `agent.env.example`) — both gitignored, only the `*.example` files are tracked |
+| Docker services (compose) | `deploy/.env` for the stack (compose interpolation) and `deploy/agent.env` for the LLM judge's provider **key** (loaded by the `agent` service; copy `agent.env.example`). Settings stay in `config/*.yml` — the services mount it live. Both env files gitignored; only the `*.example` files are tracked |
 | Cloud / Kubernetes | platform secret stores (k8s `Secret` → container env), see [Deployment](deployment.md) |
 
 Even if a key is pasted into a YAML file by mistake, it is **never read from
