@@ -232,6 +232,16 @@ export NORN_AGENT_PROVIDER=anthropic-api NORN_AGENT_MODEL=claude-sonnet-4-5 NORN
 For `ollama` see the note above (daemon + pulled model, explicit `base_url`,
 no secret); for `openai-oauth` see the dedicated flow below.
 
+**In Docker (compose):** the judge runs in the `agent` container (the scheduler
+points `NORN_AGENT_WORKER_URL` at `http://agent:9400` by default), so the
+provider config must reach **that container**, not your shell. Copy
+`deploy/agent.env.example` → `deploy/agent.env` (gitignored) and uncomment one
+provider block — the `agent` service loads it automatically. Defaults without
+the file: `ollama` against the **host** daemon via `host.docker.internal:11434`.
+One catch for `openai-api`: also set `NORN_AGENT_BASE_URL=` (empty) in
+`deploy/.env`, so the compose Ollama default does not leak into the OpenAI
+client (`${VAR-…}` semantics keep an explicitly-empty value empty).
+
 ### The `openai-oauth` flow (bearer token instead of an API key)
 
 `openai-oauth` is for authenticating with an **OAuth access token** (e.g. from a

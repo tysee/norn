@@ -232,9 +232,15 @@ all three actions. A restart clears the map; `forecast_run` remains the durable 
 | `NORN_FORECAST_TIMESFM__WORKER_URL` | scheduler | where `timesfm-2.5` jobs reach the inference worker |
 | `NORN_AGENT_WORKER_URL` | scheduler | URL of the agent worker; unset/empty = LLM judge runs in-process |
 | `NORN_MCP_HOST` / `NORN_MCP_PORT` | MCP | MCP server bind address and port (default `9200`) |
-| `NORN_AGENT_BASE_URL` | agent worker | LLM provider endpoint (e.g. Ollama via `host.docker.internal`) |
+| `NORN_AGENT_BASE_URL` | agent worker | LLM provider endpoint (e.g. Ollama via `host.docker.internal`); set EMPTY in `deploy/.env` when a cloud provider should use its own default endpoint |
 | `NORN_CLICKHOUSE_URL` | scheduler, MCP | full ClickHouse DSN (overrides `database.yml`) |
 | `NORN_DB_PASSWORD` | scheduler, MCP, agent worker | ClickHouse password (the agent worker needs it because settings load eagerly, even though it never touches ClickHouse) |
+
+To run the judge against a **cloud LLM provider**, copy `deploy/agent.env.example`
+→ `deploy/agent.env` (gitignored) and uncomment one provider block (switch +
+model + secret) — the `agent` service loads the file automatically when present.
+See the [norn-agent page](agent/README.md#per-provider-setup) for the
+per-provider details.
 
 ---
 
