@@ -87,21 +87,28 @@ tables it touches).
 
 ## Contributing
 
-Contributions are welcome. The short version:
+Contributions are welcome — the workflow is fork-based (you don't need any
+branch in this repo):
 
-1. **Branch flow:** feature branches target `dev` (`feature/*` / `fix/*` → `dev`);
-   `main` only receives promoted releases.
-2. **Keep the platform domain-agnostic.** No domain hardcode in `packages/*` or
-   `cli` — no built-in metrics, dimensions, ingestion formats, or prompts.
+1. **Issue first.** Pick an existing issue or open a new one and claim it
+   before starting anything bigger than a small fix — so the design gets
+   discussed before you invest time.
+2. **Fork & branch.** Fork the repository, keep your fork's `main` synced with
+   upstream, and create a topic branch in your fork
+   (`feat/...` / `fix/...`).
+3. **Conventional commits.** `<type>: <description>` — `feat:`, `fix:`,
+   `docs:`, `refactor:`, `test:`, `chore:`, `perf:`, `ci:`.
+4. **Open a PR against `main`.** Keep PRs small and focused; the core team
+   reviews and **squash & merges** (your PR title becomes the commit, so make
+   it a good conventional-commit line).
+5. **Keep the platform domain-agnostic.** No domain hardcode in `packages/*`
+   or `cli` — no built-in metrics, dimensions, ingestion formats, or prompts.
    Domain examples are allowed only in tests, docs, and `*example*` files;
    real domain logic belongs in an [instance](instances/example).
-3. **Tests:** run the suite against an isolated ClickHouse (see above) and add
-   coverage for what you change. Comments, docs, commit messages — in English.
-4. **Docs:** if you change behavior, update the matching page — each package
-   has its own reference under [`docs/guide/`](docs/guide/README.md).
-
-Open an issue first for anything bigger than a fix, so the design can be
-discussed before you invest time.
+6. **Tests & docs.** Run the suite against an isolated ClickHouse (see above)
+   and add coverage for what you change; if you change behavior, update the
+   matching page under [`docs/guide/`](docs/guide/README.md). Everything —
+   comments, docs, commits — in English.
 
 ## Inspiration
 
