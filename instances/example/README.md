@@ -29,6 +29,7 @@ ETT Electricity Transformer Temperature dataset).
 | `dbt/models/schema.yml`   | Minimal column tests for the mart. |
 | `deploy/jobs.yml`         | Scheduler manifest — what runs, when, and how. |
 | `deploy/crontab.sample`   | Host-cron alternative for environments without the built-in scheduler. |
+| `deploy/.env.example`     | Lightdash publish policy for THIS instance (`LD_PROJECT_NAME`, `DBT_PROJECT_HOST_DIR`) — used with the platform's `lightdash-init` via `--env-file`. |
 
 ---
 
