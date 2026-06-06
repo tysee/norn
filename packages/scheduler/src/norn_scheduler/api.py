@@ -1,9 +1,9 @@
 """
 packages/scheduler/src/norn_scheduler/api.py
 
-HTTP-поверхность шедулера: /health для проб, /jobs для наблюдаемости
-(манифест + next_run + last-результат в памяти), POST /jobs/{name}/trigger
-для ручного запуска. Закрывает create_app() над NornScheduler.
+Scheduler HTTP surface: /health for probes, /jobs for observability
+(manifest + next_run + last in-memory result), POST /jobs/{name}/trigger
+for a manual run. Wrapped by create_app() over NornScheduler.
 """
 from __future__ import annotations
 

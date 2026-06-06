@@ -1,20 +1,20 @@
 """
 packages/forecast/src/norn_forecast/forecaster.py
 
-Единый интерфейс форкастера и его адаптеры для платформы norn. Прячет за общим
-Protocol две реализации — лёгкую baseline и тяжёлую TimesFM — так, что runner и
-калибровка не зависят от модели, а выбор делается по полю job.model. TimesFM
-вынесен в отдельный HTTP-воркер, поэтому torch в этот процесс не тянется.
+A unified forecaster interface and its adapters for the norn platform. Hides behind a common
+Protocol two implementations — the lightweight baseline and the heavy TimesFM — so that the runner and
+calibration do not depend on the model, and the choice is made by the job.model field. TimesFM
+is moved out into a separate HTTP worker, so torch is not pulled into this process.
 
-Классы/методы:
-- Forecaster — Protocol: forecast(values, horizon) -> list[dict] (строки с
+Classes/methods:
+- Forecaster — Protocol: forecast(values, horizon) -> list[dict] (rows with
   horizon_step/y_hat/p10/p50/p90).
-- BaselineForecaster — обёртка над seasonal_naive_forecast (seasonal-naive).
-- TimesFMForecaster — HTTP-клиент к torch-воркеру: POST /forecast, без torch здесь.
-  Владеет httpx.Client, если тот не внедрён извне: close()/контекст-менеджер
-  закрывают пул соединений только для собственного клиента.
-- make_forecaster(job, timesfm_url=None) -> Forecaster — фабрика: по job.model
-  возвращает TimesFM (url из конфига) либо baseline (с сезонностью job).
+- BaselineForecaster — a wrapper around seasonal_naive_forecast (seasonal-naive).
+- TimesFMForecaster — an HTTP client to the torch worker: POST /forecast, no torch here.
+  Owns the httpx.Client when it is not injected from outside: close()/the context manager
+  close the connection pool only for a client it owns.
+- make_forecaster(job, timesfm_url=None) -> Forecaster — factory: by job.model
+  returns TimesFM (url from config) or baseline (with the job's seasonality).
 """
 from __future__ import annotations
 

@@ -1,143 +1,143 @@
-# PRD: Norn MVP — forecasting add-on на стеке dbt → ClickHouse → TimesFM → Lightdash
+# PRD: Norn MVP — forecasting add-on on the dbt → ClickHouse → TimesFM → Lightdash stack
 
-> **Это MVP GTM-бичхед-инстанса (delivery); платформенный код не хардкодит домен — метрики/размерности/таблицы здесь это примеры инстанса.**
+> **This is the MVP of the GTM beachhead instance (delivery); platform code does not hardcode the domain — the metrics/dimensions/tables here are instance examples.**
 
-**Инвариант платформы.** norn — вендор-нейтральная, домен-АГНОСТИЧНАЯ forecasting-платформа: мультисегментный прогноз метрик и поиск зависимостей поверх любого warehouse через generic-контракт (`forecast_point`/`forecast_segment`), конфигурируемые модель/провайдер/БД и MCP-контракт. Платформенный код (`packages/*`, `cli`) НЕ несёт доменных дефолтов — ни встроенных метрик, символов, размерностей, форматов ingestion, дашбордов, промптов, ни выбора LLM-модели. Вся доменная специфика живёт в отдельном инстанс-репо (`norn-crypto-instance` — первый dogfood-инстанс, подключается submodule). GTM-фокус (первый целевой вертикал) — delivery/marketplace/e-commerce: это рыночная стратегия, а НЕ платформенный дефолт. Любой конкретный домен в этом документе (delivery-KPI вроде delivered_orders/GMV, крипто-символы BTC/TON, размерности, трансформации, выбор модели) — помеченный ПРИМЕР, указывающий на инстанс/вертикал, а не требование платформы; детали домена — в инстанс-репо.
+**Platform invariant.** norn is a vendor-neutral, domain-AGNOSTIC forecasting platform: multi-segment forecasting of metrics and dependency discovery on top of any warehouse via a generic contract (`forecast_point`/`forecast_segment`), with configurable model/provider/DB and an MCP contract. Platform code (`packages/*`, `cli`) carries NO domain defaults — no built-in metrics, symbols, dimensions, ingestion formats, dashboards, prompts, nor LLM-model choice. All domain specificity lives in a separate instance repo (`norn-crypto-instance` — the first dogfood instance, wired in as a submodule). The GTM focus (first target vertical) is delivery/marketplace/e-commerce: that is a market strategy, NOT a platform default. Any concrete domain in this document (delivery KPIs like delivered_orders/GMV, crypto symbols BTC/TON, dimensions, transformations, model choice) is a labeled EXAMPLE pointing at the instance/vertical, not a platform requirement; domain details live in the instance repo.
 
 PRD pattern: feature
 Scale mode: solo
 Maturity mode: MVP
-Evidence-level: **L3 (Proxy) — DRAFT** (обоснование — dogfood автора-customer-zero + рыночные факты, без discovery-интервью; см. стратегию §4.3, §10 п.2)
-Upstream artifacts consumed: strategy-review [yes], jobs-backlog [no — карта JTBD взята из стратегии §4], mechanics-shortlist [no], opportunity-map [no]
+Evidence-level: **L3 (Proxy) — DRAFT** (rationale — author-as-customer-zero dogfood + market facts, without discovery interviews; see strategy §4.3, §10 item 2)
+Upstream artifacts consumed: strategy-review [yes], jobs-backlog [no — the JTBD map is taken from strategy §4], mechanics-shortlist [no], opportunity-map [no]
 
-> Этот PRD — принимающий документ для деталей, вынесенных из
-> `metric-intelligence-strategy.md` (пункты 1, 3, 5 переноса). Архитектура/моно-репо
-> (пункт 2) живёт в `../erd/monorepo-and-data-model.md` + `../erd/erd.mermaid` +
-> `../erd/architecture.mermaid` — здесь только указатель, не копия.
+> This PRD is the receiving document for details carried over from
+> `metric-intelligence-strategy.md` (carryover items 1, 3, 5). Architecture/mono-repo
+> (item 2) lives in `../erd/monorepo-and-data-model.md` + `../erd/erd.mermaid` +
+> `../erd/architecture.mermaid` — only a pointer here, not a copy.
 
 ## Product context
 
-> Импортировано из стратегии (`metric-intelligence-strategy.md` §4–§6). Не выводить заново.
+> Imported from the strategy (`metric-intelligence-strategy.md` §4–§6). Do not re-derive.
 
-- **Бизнес-задача:** доказать ценность вендор-нейтрального forecasting-слоя на собственных данных доставки до вложений в moat (зависимости + MCP).
-- **Сегмент:** Data/Analytics-инженеры и BizOps в data-heavy вертикалях (доставка/маркетплейс/e-com); customer-zero — сам автор.
-- **Core Job / critical sequence:** прогноз бизнес-KPI во множестве разрезов → actual-vs-forecast в своём BI → (позже) объяснение драйверов → MCP. Бутылочное горлышко MVP — шаги 2–3 (стратегия §4.3).
-- **Current solution/problem:** Prophet/in-house скрипты + «глазами по дашборду»; нет foundation-воркера поверх warehouse и нет стандартного способа писать forecast обратно и рисовать в Lightdash.
-- **Value mechanic:** «начать делать неохваченную работу» — zero-shot forecasting многосегментных рядов поверх warehouse как dbt-нативный add-on (стратегия §4.4).
-- **Evidence + confidence:** L3 — proxy (dogfood + market facts). Доверие к прогнозу/калибровке не подтверждено поведением пользователей за пределами автора.
+- **Business goal:** prove the value of a vendor-neutral forecasting layer on the author's own delivery data before investing in the moat (dependencies + MCP).
+- **Segment:** Data/Analytics engineers and BizOps in data-heavy verticals (delivery/marketplace/e-com); customer-zero is the author himself.
+- **Core Job / critical sequence:** forecast business KPIs across many cuts → actual-vs-forecast in one's own BI → (later) explanation of drivers → MCP. The MVP bottleneck is steps 2–3 (strategy §4.3).
+- **Current solution/problem:** Prophet/in-house scripts + "eyeballing the dashboard"; no foundation worker on top of the warehouse and no standard way to write the forecast back and chart it in Lightdash.
+- **Value mechanic:** "start doing unaddressed work" — zero-shot forecasting of multi-segment series on top of the warehouse as a dbt-native add-on (strategy §4.4).
+- **Evidence + confidence:** L3 — proxy (dogfood + market facts). Trust in the forecast/calibration is not confirmed by user behavior beyond the author.
 
 ## Problem & outcome
 
-- **Что заблокировано:** шаги 2–3 критической последовательности — «missing». Многосегментный прогноз с интервалами и actual-vs-forecast в Lightdash сейчас собираются руками/Prophet'ом, без переоценки калибровки.
-- **Risk if ignored:** без доказанной ценности прогноза вложение в moat (зависимости+MCP) — преждевременно.
-- **Primary metric (validation):** доля прогнозируемых метрик, где прогноз даёт actionable-сигнал на delivery-KPI (по 7 вопросам ценности ниже).
-- **Guardrail metrics:** калибровка (фактическое покрытие интервалов ≈ номиналу), стоимость/latency инференса на self-host без GPU-фермы.
-- **Non-goals:** свой BI/dashboard-движок, форк Lightdash, metric-registry UI, Kafka, мультимодельное сравнение, Prometheus realtime, доп. warehouse-коннекторы (всё — Reject-список стратегии §4.5).
+- **What is blocked:** steps 2–3 of the critical sequence — "missing". Multi-segment forecasts with intervals and actual-vs-forecast in Lightdash are currently assembled by hand/with Prophet, without re-evaluating calibration.
+- **Risk if ignored:** without proven forecast value, investing in the moat (dependencies+MCP) is premature.
+- **Primary metric (validation):** share of forecasted metrics where the forecast yields an actionable signal on a delivery KPI (per the 7 value questions below).
+- **Guardrail metrics:** calibration (actual interval coverage ≈ nominal), inference cost/latency on self-host without a GPU farm.
+- **Non-goals:** an own BI/dashboard engine, a Lightdash fork, a metric-registry UI, Kafka, multi-model comparison, Prometheus realtime, additional warehouse connectors (all on the strategy's Reject list §4.5).
 
-> **Нет доменных дефолтов / Platform Genericity Checkpoint.** Платформенный код (`packages/*`, `cli`) не должен хардкодить имена метрик, размерности, паттерны таблиц, форматы ingestion, дашборды или промпты — всё это приходит из конфигурации инстанса. Тот же generic-контракт (`forecast_point`/`forecast_segment`, MCP-инструменты) обязан без изменений работать для другого инстанса; MVP дополнительно валидирует это на крипто-инстансе (`norn-crypto-instance`) с другими метриками/символами/размерностями. Delivery-значения ниже — пример GTM-бичхед-вертикала, а не платформенный скоуп.
+> **No domain defaults / Platform Genericity Checkpoint.** Platform code (`packages/*`, `cli`) must not hardcode metric names, dimensions, table patterns, ingestion formats, dashboards or prompts — all of that comes from the instance configuration. The same generic contract (`forecast_point`/`forecast_segment`, MCP tools) must work unchanged for another instance; the MVP additionally validates this on the crypto instance (`norn-crypto-instance`) with different metrics/symbols/dimensions. The delivery values below are an example of the GTM beachhead vertical, not the platform scope.
 
-## Scope (Фаза 0 — жёсткий скоуп)
+## Scope (Phase 0 — hard scope)
 
-> Перенесено из стратегии §7 «Фаза 0». В стратегии остаётся одностроком.
+> Carried over from strategy §7 "Phase 0". In the strategy it stays a one-liner.
 
-**In scope** (инстанс/провайдер выбираются конфигом; значения ниже — пример delivery-инстанса GTM-бичхеда, не платформенный скоуп):
+**In scope** (instance/provider are chosen by config; the values below are an example of the GTM-beachhead delivery instance, not the platform scope):
 
-- 1 warehouse — **ClickHouse** (пример delivery-инстанса).
-- 1 BI — **Lightdash** (пример delivery-инстанса).
-- 1 модель — **TimesFM 2.5** (пример delivery-инстанса).
-- 1–3 метрики — **delivered_orders, GMV, cancellation_rate** (пример delivery-инстанса).
-- 2 grain — **hourly / daily** (пример delivery-инстанса).
-- Узкий набор dimensions — **city, store_id, merchant_id** (пример delivery-инстанса; начать с `city × merchant` или `city × store` ради sparse-риска, стратегия §9).
-- Пайплайн: `dbt-метрика в ClickHouse → TimesFM Python-воркер по YAML-конфигу → forecast-таблица → dbt actual-vs-forecast модель → дашборды в Lightdash`.
+- 1 warehouse — **ClickHouse** (delivery-instance example).
+- 1 BI — **Lightdash** (delivery-instance example).
+- 1 model — **TimesFM 2.5** (delivery-instance example).
+- 1–3 metrics — **delivered_orders, GMV, cancellation_rate** (delivery-instance example).
+- 2 grains — **hourly / daily** (delivery-instance example).
+- A narrow set of dimensions — **city, store_id, merchant_id** (delivery-instance example; start with `city × merchant` or `city × store` for the sake of sparse risk, strategy §9).
+- Pipeline: `dbt metric in ClickHouse → TimesFM Python worker driven by a YAML config → forecast table → dbt actual-vs-forecast model → dashboards in Lightdash`.
 
-**Out of scope:** см. Non-goals.
+**Out of scope:** see Non-goals.
 
-## Технический контекст (указатель, не копия)
+## Technical context (pointer, not a copy)
 
-- Раскладка моно-репо (`packages/integration` · `packages/forecast` · `packages/agent` + `cli`), тех-стек (Python 3.14+, FastAPI, dbt, ClickHouse, TimesFM), изоляция torch/dbt-окружений, dbt через subprocess — **в `../erd/monorepo-and-data-model.md`**.
-- Логическая модель данных — `../erd/erd.mermaid` (легенда `[LD]`/`[CH]`/`[META]`); компонентная схема сайдкара — `../erd/architecture.mermaid`.
+- The mono-repo layout (`packages/integration` · `packages/forecast` · `packages/agent` + `cli`), tech stack (Python 3.14+, FastAPI, dbt, ClickHouse, TimesFM), isolation of the torch/dbt environments, dbt via subprocess — **in `../erd/monorepo-and-data-model.md`**.
+- The logical data model — `../erd/erd.mermaid` (legend `[LD]`/`[CH]`/`[META]`); the sidecar component diagram — `../erd/architecture.mermaid`.
 
-## Design constraints / NFR (урок Uber DeepETT)
+## Design constraints / NFR (the Uber DeepETT lesson)
 
-> Перенесено из стратегии §2.1. Инженерные ограничения, не позиционирование.
+> Carried over from strategy §2.1. Engineering constraints, not positioning.
 
-1. **Контракт раньше модели.** Зафиксировать контракт forecast-таблицы и MCP-инструментов (вход/выход, единицы, горизонт) до написания кода воркера. Менять модель — нельзя ломать контракт.
-2. **Калибровка — непрерывная и отдельная задача.** Прогноз без честных доверительных интервалов и без периодической переоценки калибровки (systematic bias) бесполезен для алертинга. Resolution и калибровка независимы.
-3. **Производственная пригодность > SOTA на бенчмарке.** Предсказуемая стоимость/latency инференса, self-host без GPU-фермы. Предпочесть предагрегированные признаки фиксированного размера «красивым» архитектурам.
+1. **Contract before model.** Freeze the contract of the forecast table and the MCP tools (input/output, units, horizon) before writing worker code. Changing the model must not break the contract.
+2. **Calibration is a continuous and separate task.** A forecast without honest confidence intervals and without periodic re-evaluation of calibration (systematic bias) is useless for alerting. Resolution and calibration are independent.
+3. **Production fitness > SOTA on a benchmark.** Predictable inference cost/latency, self-host without a GPU farm. Prefer pre-aggregated fixed-size features over "pretty" architectures.
 
-## Контракт forecast-таблицы и YAML forecast-job
+## Contract of the forecast table and the YAML forecast-job
 
-> Перенесено из стратегии §10 п.3. Зафиксировать до масштабирования (NFR-1).
+> Carried over from strategy §10 item 3. Freeze before scaling (NFR-1).
 
-**forecast-таблица (запись обратно в ClickHouse, читается dbt actual-vs-forecast моделью):**
+**forecast table (written back to ClickHouse, read by the dbt actual-vs-forecast model):**
 
-| Поле                        | Тип             | Назначение                                           |
-| --------------------------- | --------------- | ---------------------------------------------------- |
-| `metric_name`               | String          | имя метрики (пример (delivery-инстанс): delivered_orders/GMV/cancellation_rate) |
-| `grain`                     | Enum(hour, day) | зерно                                                |
-| `ts`                        | DateTime        | таймстемп точки прогноза                             |
-| `<dim...>`                  | String          | city, store_id, merchant_id (по конфигу job)         |
-| `yhat`                      | Float           | точечный прогноз                                     |
-| `yhat_lower` / `yhat_upper` | Float           | границы доверительного интервала                     |
-| `model` / `model_version`   | String          | TimesFM + версия (для воспроизводимости)             |
-| `horizon`                   | Int             | горизонт в шагах grain                               |
-| `run_id`                    | String          | идентификатор прогона                                |
-| `generated_at`              | DateTime        | когда сгенерирован                                   |
+| Field                       | Type            | Purpose                                                                           |
+| --------------------------- | --------------- | --------------------------------------------------------------------------------- |
+| `metric_name`               | String          | metric name (example (delivery instance): delivered_orders/GMV/cancellation_rate) |
+| `grain`                     | Enum(hour, day) | grain                                                                             |
+| `ts`                        | DateTime        | timestamp of the forecast point                                                   |
+| `<dim...>`                  | String          | city, store_id, merchant_id (per the job config)                                  |
+| `yhat`                      | Float           | point forecast                                                                    |
+| `yhat_lower` / `yhat_upper` | Float           | confidence-interval bounds                                                        |
+| `model` / `model_version`   | String          | TimesFM + version (for reproducibility)                                           |
+| `horizon`                   | Int             | horizon in grain steps                                                            |
+| `run_id`                    | String          | run identifier                                                                    |
+| `generated_at`              | DateTime        | when generated                                                                    |
 
-**YAML forecast-job (зерно «слоя описания метрик» в MVP):**
+**YAML forecast-job (the "metric-description layer" grain in the MVP):**
 
-> Пример (delivery-инстанс); контракт идентичен для крипто-инстанса с другими значениями.
+> Example (delivery instance); the contract is identical for the crypto instance with different values.
 
 ```yaml
 metric: delivered_orders
-source: clickhouse.analytics.fct_delivered_orders # dbt-модель/таблица
+source: clickhouse.analytics.fct_delivered_orders # dbt model/table
 grain: hourly # hourly | daily
-dimensions: [city, merchant_id] # начать узко (sparse-риск)
-horizon: 24 # шагов grain
-context_length: 512 # окно истории для TimesFM
+dimensions: [city, merchant_id] # start narrow (sparse risk)
+horizon: 24 # grain steps
+context_length: 512 # history window for TimesFM
 model: timesfm-2.5
-schedule: "0 * * * *" # пересчёт
+schedule: "0 * * * *" # recompute
 ```
 
 ## Experiment plan
 
-- **Archetype:** dogfood-валидация (concierge-ноутбук на собственных данных доставки) → переходит в **pre-build/discovery** для проверки доверия (стратегия §4.3).
-- **Hypothesis:** Если дать data/BizOps zero-shot прогноз delivery-KPI с интервалами прямо в Lightdash, то пользователь будет действовать по нему (планировать/реагировать), потому что закрывается «missing»-шаг критической последовательности без очереди к DS.
-- **Audience:** автор (customer-zero) + 5–8 интервью data/BizOps в доставке/маркетплейсе.
-- **Metric:** 7 вопросов ценности (ниже) + калибровка как guardrail.
-- **Pre-committed decision rule:** если на 5–8 интервью отвечают «не доверяю без ручной проверки» → объяснение драйверов помечаем experimental, оставляем только корреляции с пометкой неопределённости (kill-threshold из стратегии §4.3). Дата: до старта Фазы 1.
+- **Archetype:** dogfood validation (a concierge notebook on the author's own delivery data) → transitions into **pre-build/discovery** to test trust (strategy §4.3).
+- **Hypothesis:** If we give data/BizOps a zero-shot forecast of delivery KPIs with intervals right inside Lightdash, then the user will act on it (plan/react), because it closes the "missing" step of the critical sequence without a queue to a DS.
+- **Audience:** the author (customer-zero) + 5–8 interviews with data/BizOps in delivery/marketplace.
+- **Metric:** 7 value questions (below) + calibration as a guardrail.
+- **Pre-committed decision rule:** if in 5–8 interviews they answer "I don't trust it without a manual check" → we mark driver explanation as experimental, keeping only correlations flagged with an uncertainty note (kill-threshold from strategy §4.3). Date: before the start of Phase 1.
 
-## Acceptance criteria — DoD = 7 вопросов ценности
+## Acceptance criteria — DoD = 7 value questions
 
-> DoD НЕ «запустился ли TimesFM», а ответы на 7 вопросов (стратегия §7 Фаза 0). Каждый — наблюдаемый результат на реальных данных.
+> The DoD is NOT "did TimesFM run", but answers to the 7 questions (strategy §7 Phase 0). Each is an observable result on real data.
 
-- [ ] **1. Actionability** — прогноз даёт бизнес-пользователю полезный сигнал хотя бы на одной из 3 метрик (зафиксированное решение, принятое по прогнозу).
-- [ ] **2. Стабильность grain** — задокументировано, на каком grain (hourly/daily) прогноз стабилен, а где разваливается.
-- [ ] **3. Sparse-сегменты** — измерено поведение на разрезах с нулями/пропусками; зафиксирован порог агрегации редких сегментов.
-- [ ] **4. Место потребления** — подтверждено, хочет ли пользователь видеть actual-vs-forecast именно в Lightdash.
-- [ ] **5. Калибровка** — фактическое покрытие интервалов сопоставлено с номиналом; bias переоценивается, а не фиксируется один раз.
-- [ ] **6. Горизонт** — определён реально используемый в решениях горизонт.
-- [ ] **7. Dimensions** — отделены значимые для решения разрезы от шума.
+- [ ] **1. Actionability** — the forecast gives the business user a useful signal on at least one of the 3 metrics (a recorded decision made based on the forecast).
+- [ ] **2. Grain stability** — documented at which grain (hourly/daily) the forecast is stable and where it falls apart.
+- [ ] **3. Sparse segments** — behavior measured on cuts with zeros/gaps; an aggregation threshold for rare segments is fixed.
+- [ ] **4. Place of consumption** — confirmed whether the user wants to see actual-vs-forecast specifically in Lightdash.
+- [ ] **5. Calibration** — actual interval coverage compared with the nominal; bias is re-evaluated, not fixed once.
+- [ ] **6. Horizon** — the horizon actually used in decisions is determined.
+- [ ] **7. Dimensions** — cuts meaningful for the decision are separated from noise.
 
-## Validation phase (единственная — L3 DRAFT, без Launch)
+## Validation phase (the only one — L3 DRAFT, without Launch)
 
-- **Validation:** собрать MVP-add-on на своих данных (1–3 метрики) → пройти 7 вопросов ценности + 5–8 discovery-интервью.
-  - **success threshold:** ≥1 метрика проходит вопрос 1 (actionable) при адекватной калибровке (вопрос 5).
-  - **pivot/stop trigger:** kill-threshold доверия (см. decision rule) → не строить LLM-объяснение драйверов как core, понизить до experimental.
-- Launch-фаза и план платного привлечения — заблокированы до прохождения evidence-gate.
+- **Validation:** build the MVP add-on on the author's own data (1–3 metrics) → pass the 7 value questions + 5–8 discovery interviews.
+  - **success threshold:** ≥1 metric passes question 1 (actionable) with adequate calibration (question 5).
+  - **pivot/stop trigger:** trust kill-threshold (see decision rule) → do not build LLM-based driver explanation as core, downgrade it to experimental.
+- The Launch phase and the paid-acquisition plan are blocked until the evidence-gate is passed.
 
 ## Risks and open questions
 
-- **Sparse-сегменты:** на полном `city × store × merchant × courier_type × customer_tier × hour` половина рядов — нули → деградация. Митигация: начать с `city × merchant`/`city × store`.
-- **Доверие к интервалам/калибровке:** без честных CI прогноз бесполезен для решений (NFR-2).
-- **Open:** имя/нарратив add-on'а; точная граница, что считается «полезным сигналом» по каждой метрике.
+- **Sparse segments:** on the full `city × store × merchant × courier_type × customer_tier × hour`, half of the series are zeros → degradation. Mitigation: start with `city × merchant`/`city × store`.
+- **Trust in intervals/calibration:** without honest CIs the forecast is useless for decisions (NFR-2).
+- **Open:** the name/narrative of the add-on; the precise boundary of what counts as a "useful signal" for each metric.
 
-## Что снимет evidence-gate
+## What will lift the evidence-gate
 
-5–8 discovery-интервью data/BizOps (стратегия §10 п.2) с фактом/не-фактом о доверии к LLM-объяснению драйверов → поднимает evidence до L2 (reported behavior) и открывает Фазу 1 (moat). Маршрут: `product-discovery-interviews`.
+5–8 discovery interviews with data/BizOps (strategy §10 item 2) yielding a fact/non-fact about trust in LLM-based driver explanation → raises evidence to L2 (reported behavior) and opens Phase 1 (moat). Route: `product-discovery-interviews`.
 
-## DoD (этого PRD)
+## DoD (of this PRD)
 
-1. Scope Фазы 0 зафиксирован одним списком (warehouse/BI/модель/метрики/grain/dimensions) — выполнено выше.
-2. Контракт forecast-таблицы и YAML forecast-job определён до кода (NFR-1) — выполнено выше.
-3. DoD MVP выражен как 7 наблюдаемых вопросов ценности с kill-порогом — выполнено выше.
+1. The Phase 0 scope is fixed as a single list (warehouse/BI/model/metrics/grain/dimensions) — done above.
+2. The contract of the forecast table and the YAML forecast-job is defined before code (NFR-1) — done above.
+3. The MVP DoD is expressed as 7 observable value questions with a kill-threshold — done above.

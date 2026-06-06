@@ -1,17 +1,17 @@
 """
 packages/agent/src/norn_agent/__init__.py
 
-Пакет агента анализа зависимостей между метриками платформы norn. Назначение:
-связать слой витрин (mart_metric) с LLM-суждением о lead/lag-зависимостях.
-Статистические методы (cross-correlation, Granger) вычисляют улики, а
-PydanticAI-агент решает, реальна ли зависимость, и объясняет её человеку.
-Платформа доменно-нейтральна: метрика и сегменты задаются вызывающей стороной.
+Agent package for analyzing dependencies between metrics on the norn platform. Purpose:
+to connect the mart layer (mart_metric) with an LLM judgment about lead/lag dependencies.
+The statistical methods (cross-correlation, Granger) compute the evidence, and the
+PydanticAI agent decides whether a dependency is real and explains it to a human.
+The platform is domain-neutral: the metric and segments are set by the caller.
 
-Состав пакета:
-- agent — построение LLM-агента и вынесение структурированного решения по уликам.
-- analyze — оркестрация прохода: чтение рядов, прогон методов, запись результатов.
-- contract — Pydantic-модели контракта (job, измерение метода, решение агента).
-- methods — реестр статистических методов-улик.
+Package contents:
+- agent — building the LLM agent and issuing a structured decision from the evidence.
+- analyze — orchestration of a pass: reading the series, running the methods, writing the results.
+- contract — Pydantic models of the contract (job, method measurement, agent decision).
+- methods — registry of the statistical evidence methods.
 """
 
 __version__ = "0.0.0"

@@ -1,4 +1,4 @@
--- Метрика из сырых свечей. Пустая, пока raw_candles не наполнят отдельно.
+-- Metric derived from raw candles. Empty until raw_candles is populated separately.
 select
     ts,
     symbol,

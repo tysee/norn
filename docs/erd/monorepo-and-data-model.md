@@ -1,180 +1,180 @@
-# Norn — моно-репо, ERD и тех-стек
+# Norn — monorepo, ERD and tech stack
 
-*Дата: 29 мая 2026. Сопровождает `erd.mermaid` и `architecture.mermaid`.*
+*Date: 29 May 2026. Accompanies `erd.mermaid` and `architecture.mermaid`.*
 
-> **Инвариант платформы.** norn — вендор-нейтральная, домен-АГНОСТИЧНАЯ forecasting-платформа: мультисегментный прогноз метрик и поиск зависимостей поверх любого warehouse через generic-контракт (`forecast_point`/`forecast_segment`), конфигурируемые модель/провайдер/БД и MCP-контракт. Платформенный код (`packages/*`, `cli`) НЕ несёт доменных дефолтов — ни встроенных метрик, символов, размерностей, форматов ingestion, дашбордов, промптов, ни выбора LLM-модели. Вся доменная специфика живёт в отдельном инстанс-репо (`norn-crypto-instance` — первый dogfood-инстанс, подключается submodule). GTM-фокус (первый целевой вертикал) — delivery/marketplace/e-commerce: это рыночная стратегия, а НЕ платформенный дефолт. Любой конкретный домен в этом документе (delivery-KPI вроде delivered_orders/GMV, крипто-символы BTC/TON, размерности, трансформации, выбор модели) — помеченный ПРИМЕР, указывающий на инстанс/вертикал, а не требование платформы; детали домена — в инстанс-репо.
+> **Platform invariant.** norn is a vendor-neutral, domain-AGNOSTIC forecasting platform: multi-segment forecasting of metrics and dependency discovery on top of any warehouse via a generic contract (`forecast_point`/`forecast_segment`), with configurable model/provider/DB and an MCP contract. The platform code (`packages/*`, `cli`) carries NO domain defaults — no built-in metrics, symbols, dimensions, ingestion formats, dashboards, prompts, nor any choice of LLM model. All domain specifics live in a separate instance repo (`norn-crypto-instance` — the first dogfood instance, attached as a submodule). The GTM focus (the first target vertical) is delivery/marketplace/e-commerce: this is a market strategy, NOT a platform default. Any concrete domain in this document (delivery KPIs such as delivered_orders/GMV, crypto symbols BTC/TON, dimensions, transformations, model choice) is a flagged EXAMPLE pointing at an instance/vertical, not a platform requirement; domain details live in the instance repo.
 
-Плаг-ин-плей сайдкар к Lightdash: аналитик одной командой поднимает прогнозы и анализ зависимостей поверх существующего стека `dbt + ClickHouse + Lightdash`. Мы **не форкаем Lightdash и не пишем свой BI** — добавляем три слоя сбоку.
+A plug-and-play sidecar to Lightdash: with a single command an analyst stands up forecasts and dependency analysis on top of their existing `dbt + ClickHouse + Lightdash` stack. We do **not fork Lightdash and do not write our own BI** — we add three layers alongside it.
 
 ---
 
-## 1. Состав моно-репо (3 части + CLI)
+## 1. Monorepo layout (3 parts + CLI)
 
 ```text
-norn/                    # репозиторий tysee/norn
+norn/                    # repository tysee/norn
 ├── packages/
-│   ├── agent/          # 1) Агент анализа зависимостей (pi.dev / PydanticAI)
-│   ├── forecast/       # 2) Сервис прогнозов (TimesFM 2.5 worker, FastAPI)
-│   └── integration/    # 3) Обвязка: dbt + Lightdash + ClickHouse
+│   ├── agent/          # 1) Dependency-analysis agent (pi.dev / PydanticAI)
+│   ├── forecast/       # 2) Forecast service (TimesFM 2.5 worker, FastAPI)
+│   └── integration/    # 3) Glue: dbt + Lightdash + ClickHouse
 ├── cli/                # one-command orchestrator: `norn up`
-├── deploy/             # docker-compose: сайдкар рядом с Lightdash
-├── forecasts/          # YAML forecast-job registry (без UI на старте)
-└── pyproject.toml      # workspace (uv / hatch), общий линт/типы
+├── deploy/             # docker-compose: sidecar next to Lightdash
+├── forecasts/          # YAML forecast-job registry (no UI at the start)
+└── pyproject.toml      # workspace (uv / hatch), shared lint/types
 ```
 
-Три части — это ровно три слоя фокуса из стратегии: **описание метрик** (integration), **прогнозирование** (forecast), **поиск зависимостей** (agent).
+The three parts are exactly the three focus layers from the strategy: **metric description** (integration), **forecasting** (forecast), **dependency discovery** (agent).
 
 ---
 
-## 2. Тех-стек и принцип «меньше зависимостей»
+## 2. Tech stack and the "fewer dependencies" principle
 
-Базовое правило: берём готовое, если оно не навязывает лишних ограничений; свой код — только клей. Каждая зависимость должна «оправдать своё место».
+Base rule: use off-the-shelf if it does not impose unnecessary constraints; our own code is only glue. Each dependency must "earn its place".
 
-| Часть | Язык / рантайм | Готовое (переиспользуем) | Свой код (клей) |
+| Part | Language / runtime | Off-the-shelf (reused) | Our code (glue) |
 |-------|----------------|---------------------------|-----------------|
-| integration | Python 3.14+ | `dbt-core` + `dbt-clickhouse`; чтение метрик из dbt `manifest.json` (или Lightdash API); `clickhouse-connect` | маппинг dbt-метрик → `metric_definition`, генерация `actual_vs_forecast` dbt-модели |
-| forecast | Python (env воркера, см. §5) | `timesfm` (2.5) + `torch`; `clickhouse-connect`; `FastAPI` для API; `pydantic` для конфигов | extract→group→inference→write-back; sparse-политика |
-| agent | Python 3.14+ | агент-фреймворк (pi.dev / PydanticAI); `numpy`/`scipy`/`statsmodels` (lagged corr, Granger, MI); LLM-SDK провайдера | оркестрация анализа, формирование объяснений с caveats |
-| cli | Python 3.14+ | `typer` (или stdlib `argparse`, если хотим 0 доп. зависимостей) | `norn init` / `norn up` |
-| metadata | — | Postgres (позже); на старте — `forecasts/*.yml` + таблицы в ClickHouse | — |
+| integration | Python 3.14+ | `dbt-core` + `dbt-clickhouse`; reading metrics from the dbt `manifest.json` (or the Lightdash API); `clickhouse-connect` | mapping dbt metrics → `metric_definition`, generating the `actual_vs_forecast` dbt model |
+| forecast | Python (worker env, see §5) | `timesfm` (2.5) + `torch`; `clickhouse-connect`; `FastAPI` for the API; `pydantic` for configs | extract→group→inference→write-back; sparse policy |
+| agent | Python 3.14+ | agent framework (pi.dev / PydanticAI); `numpy`/`scipy`/`statsmodels` (lagged corr, Granger, MI); provider LLM SDK | analysis orchestration, building explanations with caveats |
+| cli | Python 3.14+ | `typer` (or stdlib `argparse` if we want 0 extra dependencies) | `norn init` / `norn up` |
+| metadata | — | Postgres (later); at the start — `forecasts/*.yml` + tables in ClickHouse | — |
 
-Намеренно НЕ тащим: свой scheduler (берём системный `cron` в `deploy/`), свой ORM на старте (конфиги — YAML, ран-лог — в ClickHouse), свой dashboard-движок (Lightdash), свой transform (dbt).
+Deliberately NOT pulling in: our own scheduler (we use the system `cron` in `deploy/`), our own ORM at the start (configs are YAML, the run log lives in ClickHouse), our own dashboard engine (Lightdash), our own transform (dbt).
 
 ---
 
-## 3. Хранилища и где живут сущности ERD
+## 3. Stores and where the ERD entities live
 
-Легенда `erd.mermaid`:
+Legend for `erd.mermaid`:
 
-- **`[LD]` Lightdash Postgres** — проекты и dbt-метрики. **Только читаем** (через `manifest.json` или Lightdash API), не владеем.
-- **`[CH]` ClickHouse** — `mart_metric` (факты, строит dbt), `forecast_point` (выход прогноза), `actual_vs_forecast` (dbt-вью). Аналитический слой.
+- **`[LD]` Lightdash Postgres** — projects and dbt metrics. **Read-only** (via `manifest.json` or the Lightdash API), not owned by us.
+- **`[CH]` ClickHouse** — `mart_metric` (facts, built by dbt), `forecast_point` (forecast output), `actual_vs_forecast` (dbt view). The analytical layer.
 - **`[META]` addon Postgres** — `project`, `connection`, `metric_definition`, `forecast_job/run/segment`, `dependency_*`.
 
-**Важная оговорка про MVP.** Полноценный `[META]` Postgres нужен только когда появятся UI/много пользователей. На старте (как в MVP-спеке) персистентность проще:
+**Important MVP caveat.** A full `[META]` Postgres is needed only once a UI / many users appear. At the start (as in the MVP spec) persistence is simpler:
 
-- `forecast_job` / `metric_definition` → `forecasts/*.yml` в репозитории;
-- `forecast_run` / `forecast_segment` / `forecast_point` → таблицы ClickHouse;
-- `dependency_*` → ClickHouse или JSON-артефакты.
+- `forecast_job` / `metric_definition` → `forecasts/*.yml` in the repository;
+- `forecast_run` / `forecast_segment` / `forecast_point` → ClickHouse tables;
+- `dependency_*` → ClickHouse or JSON artifacts.
 
-То есть ERD описывает **логическую** модель; реляционный `[META]`-стор вводим на Фазе 1+, когда добавляем зависимости/MCP и UI. Это держит число инфра-зависимостей минимальным на старте (только ClickHouse, который и так есть).
+That is, the ERD describes the **logical** model; we introduce the relational `[META]` store in Phase 1+, when we add dependencies/MCP and a UI. This keeps the number of infra dependencies minimal at the start (only ClickHouse, which is there anyway).
 
 ---
 
 ## 4. One-command UX (plug-and-play)
 
 ```text
-norn init       # обнаружить dbt-метрики (manifest.json/Lightdash),
-                # предложить forecast-jobs -> forecasts/*.yml
-norn up         # поднять сайдкар: forecast worker + agent (FastAPI),
-                # прогнать прогноз, записать forecast_point в ClickHouse,
-                # сгенерировать dbt actual_vs_forecast и обновить Lightdash
+norn init       # discover dbt metrics (manifest.json/Lightdash),
+                # propose forecast jobs -> forecasts/*.yml
+norn up         # stand up the sidecar: forecast worker + agent (FastAPI),
+                # run the forecast, write forecast_point to ClickHouse,
+                # generate the dbt actual_vs_forecast and refresh Lightdash
 ```
 
-`deploy/docker-compose.yml` запускает сайдкар, указывающий на **существующие** ClickHouse и Lightdash (через env). Аналитику не нужно ничего конфигурировать вручную сверх DSN.
+`deploy/docker-compose.yml` runs the sidecar pointing at the **existing** ClickHouse and Lightdash (via env). The analyst does not need to configure anything by hand beyond the DSN.
 
-### Локальный BI-стек (отладка)
+### Local BI stack (debugging)
 
-`deploy/docker-compose.yml` поднимает локально: ClickHouse + Lightdash (+ его
-Postgres + headless-browser) + generic dbt-проект `deploy/dbt/` (profiles → ClickHouse,
-модели `mart_metric`, `actual_vs_forecast`). TimesFM-воркер — отдельный torch-pinned
-контейнер (`deploy/timesfm.Dockerfile`), forecast-слой ходит в него по HTTP за
-`Forecaster`-интерфейсом (baseline остаётся фолбэком). Наполнение данными — raw
-datapoints (формат ingestion — выбор инстанса; крипто-инстанс: `raw_candles`) —
-отдельно, вне платформы.
+`deploy/docker-compose.yml` brings up locally: ClickHouse + Lightdash (+ its
+Postgres + headless browser) + a generic dbt project `deploy/dbt/` (profiles → ClickHouse,
+models `mart_metric`, `actual_vs_forecast`). The TimesFM worker is a separate torch-pinned
+container (`deploy/timesfm.Dockerfile`); the forecast layer talks to it over HTTP behind a
+`Forecaster` interface (baseline remains the fallback). Data seeding — raw
+datapoints (ingestion format is the instance's choice; crypto instance: `raw_candles`) — is
+separate, outside the platform.
 
-**MCP-слой (агенты):** `norn mcp` поднимает FastMCP-сервер (streamable-http) с
-MCP-инструментами (11): get_forecast / get_expected_range / classify_levels_vs_band /
-get_divergence / get_calibration (incl. is_sparse) / get_dependencies (explained-флаг +
-числовой fallback при деградации LLM) / get_dependency_history / get_run_status /
-get_forecast_status / list_metrics / list_segments поверх таблиц `forecast_point` /
+**MCP layer (agents):** `norn mcp` brings up a FastMCP server (streamable-http) with
+MCP tools (11): get_forecast / get_expected_range / classify_levels_vs_band /
+get_divergence / get_calibration (incl. is_sparse) / get_dependencies (explained flag +
+numeric fallback on LLM degradation) / get_dependency_history / get_run_status /
+get_forecast_status / list_metrics / list_segments on top of the tables `forecast_point` /
 `forecast_segment` / `forecast_run` / `metric_dependency` / `dependency_explanation`.
-Discovery (list_*) и статус/свежесть (get_*_status) позволяют агенту находить ряды и
-оценивать актуальность прогноза. «Lightdash для людей, MCP для агентов».
-`get_dependencies` (пример (крипто-инстанс): BTC↔TON) — Plan 5.
+Discovery (list_*) and status/freshness (get_*_status) let an agent find series and
+assess forecast freshness. "Lightdash for humans, MCP for agents".
+`get_dependencies` (example (crypto instance): BTC↔TON) — Plan 5.
 
-**Dependency-агент (`packages/agent`):** PydanticAI-агент анализа зависимостей. Методы
-(lagged cross-correlation + Granger на доменной трансформации ряда — пример доменной
-трансформации (крипто-инстанс): log-returns) дают улики → агент судит реальность и
-объясняет → `metric_dependency` (числа) + `dependency_explanation` (решение). `norn deps
-<job.yml>`; MCP `get_dependencies` отдаёт и числа, и решение агента. Тесты — на PydanticAI
-`TestModel` (без реального LLM). Лаг — будущая ковариата TimesFM (XReg).
+**Dependency agent (`packages/agent`):** a PydanticAI dependency-analysis agent. The methods
+(lagged cross-correlation + Granger on a domain transformation of the series — example domain
+transformation (crypto instance): log-returns) produce evidence → the agent judges reality and
+explains → `metric_dependency` (numbers) + `dependency_explanation` (decision). `norn deps
+<job.yml>`; MCP `get_dependencies` returns both the numbers and the agent's decision. Tests run on the PydanticAI
+`TestModel` (no real LLM). The lag is a future TimesFM covariate (XReg).
 
-**LLM-провайдер и модель агента** конфигурируем (`config/agent.yml` → `provider` / `model`):
-ollama (локальный), openai-api, openai-oauth (bearer), openrouter, anthropic-api. Конкретные
-модель и провайдер — выбор инстанса в `config/agent.yml`; у платформы НЕТ дефолтной LLM-модели.
-Секреты — из env (OPENAI_API_KEY / NORN_OPENAI_OAUTH_TOKEN / OPENROUTER_API_KEY /
-ANTHROPIC_API_KEY). Для локального Ollama: запущенный демон на :11434 + `ollama pull <model>`
-(модель из config инстанса). При недоступном/неверном провайдере `norn deps` деградирует
-(пишет metric_dependency, без объяснения), не падает.
-
----
-
-## 5. Совместимость Python 3.14+ (честный риск)
-
-Наш код целимся на **Python 3.14+**, но две зависимости исторически отстают от свежих релизов Python:
-
-- **`torch` / `timesfm`** — колёса под 3.14 могут появиться с задержкой.
-- **`dbt-core`** — поддержка новых минорных версий Python обычно догоняет не сразу.
-
-Митигация — моно-репо это позволяет без боли:
-
-1. **forecast** запускаем в своём контейнере с зафиксированным интерпретатором под torch (напр. 3.12/3.13), общается по FastAPI/HTTP — наш остальной код остаётся на 3.14+.
-2. **dbt** вызываем как **subprocess** (CLI), а не импортируем в наш процесс → версия Python dbt развязана с нашей.
-3. `integration` и `agent` (чистый Python + numpy/scipy) — на 3.14+ без проблем.
-
-Проверить перед стартом: наличие колёс `torch`/`timesfm` и поддержку Python в `dbt-clickhouse` на момент сборки (открытый вопрос в spike).
+**The agent's LLM provider and model** are configurable (`config/agent.yml` → `provider` / `model`):
+ollama (local), openai-api, openai-oauth (bearer), openrouter, anthropic-api. The concrete
+model and provider are the instance's choice in `config/agent.yml`; the platform has NO default LLM model.
+Secrets come from env (OPENAI_API_KEY / NORN_OPENAI_OAUTH_TOKEN / OPENROUTER_API_KEY /
+ANTHROPIC_API_KEY). For local Ollama: a running daemon on :11434 + `ollama pull <model>`
+(model from the instance config). When the provider is unavailable/incorrect, `norn deps` degrades
+(writes metric_dependency, without an explanation) instead of crashing.
 
 ---
 
-## 6. Конфигурация (YAML-native)
+## 5. Python 3.14+ compatibility (an honest risk)
 
-Все generic-настройки платформы — в центральной `config/` (разбито по логике:
-`database.yml`/`forecast.yml`/`agent.yml`/`mcp.yml`), читаются типизированным слоем
-`norn_core.config` (pydantic-settings). Приоритет: **env > YAML > дефолт**. Секреты
-(пароль БД, API-ключи) — только в env (`NORN_DB_PASSWORD`, `NORN_CLICKHOUSE_URL`).
-`NORN_CONFIG_DIR` переопределяет путь. Доменные значения (метрики/символы) в
-платформенный config НЕ попадают — это инстанс.
+Our code targets **Python 3.14+**, but two dependencies have historically lagged behind fresh Python releases:
 
-Магические константы устранены: интервалы baseline выводятся из `forecast.quantiles`
-(нормальная аппроксимация), значимость/порог Granger — из `agent.*`, колонки квантилей
-TimesFM выводятся из запрошенных квантилей. Числовые допуски (eps) — именованные константы.
+- **`torch` / `timesfm`** — wheels for 3.14 may arrive with a delay.
+- **`dbt-core`** — support for new minor Python versions usually catches up only later.
 
-**Ковариаты (XReg):** forecast-job может объявить covariates (metric/segment/lag) или
-use_dependencies (взять подтверждённые зависимости из metric_dependency). Раннер строит
-выровненный по таймстемпам ряд лидера на контекст+горизонт (policy strict|ffill из config) и
-передаёт TimesFM как dynamic_numerical_covariates (forecast_with_covariates). Без ковариат —
-обычный прогноз (дефолт, без изменений). Baseline ковариаты игнорирует.
+Mitigation — the monorepo makes this painless:
 
-**Конфиг — YAML-native без скрытых дефолтов:** поля настроек не имеют Python-дефолтов; значение
-берётся из `config/<section>.yml` (или env-override), отсутствие обязательного ключа → явный
-`ValidationError` на старте. Секрет БД (`password`) — только из env `NORN_DB_PASSWORD`. LLM-режим
-вывода (`agent.output_mode`: native|tool|prompted) и `agent.base_url` — явная конфигурация, без
-фолбеков в коде. **Деградация LLM явная:** `judge_dependencies` поднимает `LLMUnavailable`,
-`analyze_dependencies` ловит на границе (ERROR-лог с traceback), возвращает `AnalysisResult`
-(`explained=False` + причина), CLI печатает `⚠ LLM explanation skipped: …`; статистика
-(`metric_dependency`) пишется всегда.
+1. **forecast** runs in its own container with a pinned interpreter for torch (e.g. 3.12/3.13), communicating over FastAPI/HTTP — the rest of our code stays on 3.14+.
+2. **dbt** is invoked as a **subprocess** (CLI) rather than imported into our process → dbt's Python version is decoupled from ours.
+3. `integration` and `agent` (pure Python + numpy/scipy) — on 3.14+ without issues.
 
-**Владение схемой контракт-таблиц (`database.manage_schema`):** norn — warehouse-table-native,
-dbt-опциональна. `true` (дефолт) — norn идемпотентно создаёт свои контракт-таблицы в своей БД
-(zero-setup, greenfield/локалка). `false` — norn НЕ выполняет DDL (только INSERT); таблицы
-заводит пользователь своим dbt/миграциями, каноническую DDL печатает `norn print-schema`; перед
-записью norn делает pre-flight проверку и при отсутствии таблиц явно падает `ContractSchemaMissing`.
-Так платформа не навязывает runtime-DDL governed-хранилищу. dbt — типичный, но не обязательный
-способ построить как витрину, так и эти таблицы.
-
-**Хранение контракт-таблиц при росте:** одна таблица на тип контракта, но с
-`PARTITION BY toYYYYMM(created_at)` и настраиваемым `TTL` (`forecast.retention_months`,
-дефолт 12 мес; 0 = без TTL). Это идиоматично для ClickHouse (не дробим на таблицы).
-**Upgrade существующих таблиц:** ClickHouse не добавляет `PARTITION BY` через `ALTER` —
-для уже созданных таблиц требуется пересоздание (drop + `norn schema-apply`); forecast-данные
-воспроизводимы повторным прогоном job'ов, поэтому это безопасный штатный шаг. `TTL` отдельно
-можно докинуть `ALTER TABLE ... MODIFY TTL ...`.
+Check before starting: availability of `torch`/`timesfm` wheels and Python support in `dbt-clickhouse` at build time (an open question in the spike).
 
 ---
 
-## 7. Связь с диаграммами
+## 6. Configuration (YAML-native)
 
-- `erd.mermaid` — сущности и связи (логическая модель данных, легенда хранилищ).
-- `architecture.mermaid` — компонентная схема сайдкара: CLI → 3 пакета → ClickHouse / Lightdash / dbt / LLM.
+All generic platform settings live in a central `config/` (split by concern:
+`database.yml`/`forecast.yml`/`agent.yml`/`mcp.yml`), read by the typed layer
+`norn_core.config` (pydantic-settings). Priority: **env > YAML > default**. Secrets
+(DB password, API keys) live only in env (`NORN_DB_PASSWORD`, `NORN_CLICKHOUSE_URL`).
+`NORN_CONFIG_DIR` overrides the path. Domain values (metrics/symbols) do NOT go into
+the platform config — that is the instance.
 
-Оба файла рендерятся в Cowork; открой их карточки, чтобы увидеть диаграммы.
+Magic constants are eliminated: baseline intervals are derived from `forecast.quantiles`
+(normal approximation), the Granger significance/threshold from `agent.*`, the TimesFM quantile
+columns are derived from the requested quantiles. Numeric tolerances (eps) are named constants.
+
+**Covariates (XReg):** a forecast job may declare covariates (metric/segment/lag) or
+use_dependencies (take confirmed dependencies from metric_dependency). The runner builds a
+timestamp-aligned leader series over context+horizon (policy strict|ffill from config) and
+passes it to TimesFM as dynamic_numerical_covariates (forecast_with_covariates). Without covariates —
+a regular forecast (default, unchanged). Baseline ignores covariates.
+
+**Config — YAML-native with no hidden defaults:** settings fields have no Python defaults; the value
+is taken from `config/<section>.yml` (or an env override), and a missing required key → an explicit
+`ValidationError` at startup. The DB secret (`password`) comes only from env `NORN_DB_PASSWORD`. The LLM
+inference mode (`agent.output_mode`: native|tool|prompted) and `agent.base_url` are explicit configuration, without
+fallbacks in code. **LLM degradation is explicit:** `judge_dependencies` raises `LLMUnavailable`,
+`analyze_dependencies` catches it at the boundary (ERROR log with traceback), returns an `AnalysisResult`
+(`explained=False` + reason), and the CLI prints `⚠ LLM explanation skipped: …`; the statistics
+(`metric_dependency`) are always written.
+
+**Ownership of the contract tables' schema (`database.manage_schema`):** norn is warehouse-table-native,
+dbt-optional. `true` (default) — norn idempotently creates its own contract tables in its DB
+(zero-setup, greenfield/local). `false` — norn does NOT execute DDL (INSERT only); the tables are
+provisioned by the user via their own dbt/migrations, the canonical DDL is printed by `norn print-schema`; before
+writing, norn runs a pre-flight check and, if the tables are missing, fails explicitly with `ContractSchemaMissing`.
+This way the platform does not impose runtime DDL on a governed store. dbt is the typical, but not mandatory,
+way to build both the mart and these tables.
+
+**Storing the contract tables as they grow:** one table per contract type, but with
+`PARTITION BY toYYYYMM(created_at)` and a configurable `TTL` (`forecast.retention_months`,
+default 12 months; 0 = no TTL). This is idiomatic for ClickHouse (we do not split into separate tables).
+**Upgrading existing tables:** ClickHouse does not add `PARTITION BY` via `ALTER` —
+already-created tables require recreation (drop + `norn schema-apply`); forecast data is
+reproducible by re-running the jobs, so this is a safe, routine step. `TTL` can be added separately
+with `ALTER TABLE ... MODIFY TTL ...`.
+
+---
+
+## 7. Relation to the diagrams
+
+- `erd.mermaid` — entities and relationships (the logical data model, store legend).
+- `architecture.mermaid` — the sidecar component diagram: CLI → 3 packages → ClickHouse / Lightdash / dbt / LLM.
+
+Both files render in Cowork; open their cards to see the diagrams.

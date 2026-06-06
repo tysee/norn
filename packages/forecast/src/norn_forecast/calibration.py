@@ -1,20 +1,22 @@
 """
 packages/forecast/src/norn_forecast/calibration.py
 
-Rolling-origin калибровка прогнозов платформы norn. Несколько раз «отматывает»
-ряд назад на горизонт (cutoff'ы), строит прогноз только по прошлому и сравнивает
-его с реальным hold-out: насколько факт попадает в интервал p10..p90 (coverage)
-и насколько точна центральная оценка (wape/mape/bias). Так измеряется доверие к
-форкастеру по каждому сегменту; метрики складываются в контракт-таблицу
-forecast_segment, откуда их читает агент через MCP-инструмент get_calibration.
+Rolling-origin calibration of norn platform forecasts. It rewinds the series
+back by one horizon several times (cutoffs), builds a forecast from the past
+only, and compares it against the real hold-out: how often the actual falls
+inside the p10..p90 interval (coverage) and how accurate the central estimate is
+(wape/mape/bias). This measures trust in the forecaster per segment; the metrics
+are written to the contract table forecast_segment, where the agent reads them
+through the MCP tool get_calibration.
 
-Методы:
+Functions:
 - backtest_metrics(values, forecaster, horizon, n_cutoffs, ts=None,
-  covariates_for=None) -> dict — coverage/wape/mape/bias/n_points по одному ряду
-  (чистая функция, без ввода-вывода). covariates_for(ctx_ts) отдаёт XReg-ковариаты
-  для каждого cutoff'а — так калибровка xreg-job меряет ИМЕННО xreg-модель.
-- calibrate_job(job, client, forecaster=None) -> str — прогон по всем сегментам
-  job, запись метрик в forecast_segment; возвращает run_id калибровки.
+  covariates_for=None) -> dict — coverage/wape/mape/bias/n_points for a single
+  series (pure function, no I/O). covariates_for(ctx_ts) returns the XReg
+  covariates for each cutoff — so calibration of an xreg job measures EXACTLY the
+  xreg model.
+- calibrate_job(job, client, forecaster=None) -> str — run over all segments of
+  the job, writing metrics to forecast_segment; returns the calibration run_id.
 """
 from __future__ import annotations
 
@@ -34,7 +36,7 @@ from norn_forecast.covariates import (
 from norn_forecast.forecaster import Forecaster, make_forecaster
 from norn_forecast.runner import _STEP, _segment_key, _segments, _series
 
-# Тип колбэка: контекстные ts cutoff'а -> словарь XReg-ковариат (или None).
+# Callback type: a cutoff's context ts -> dict of XReg covariates (or None).
 CovariatesFor = Callable[[list], dict[str, list[float]] | None]
 
 
@@ -44,8 +46,9 @@ def _cutoff_forecast(
 ) -> list[dict]:
     """One rolling-origin forecast at a cutoff, with covariates when provided.
 
-    Без ковариат вызов остаётся прежним (совместимость с форкастерами, чей
-    forecast() не знает kwargs covariates) — поведение plain-калибровки не меняется.
+    Without covariates the call stays as before (compatible with forecasters
+    whose forecast() does not know the covariates kwarg) — plain-calibration
+    behavior is unchanged.
     """
     covs = covariates_for(ts[:cut]) if (covariates_for and ts) else None
     if covs:
@@ -57,7 +60,7 @@ def backtest_metrics(
     values: list[float], forecaster: Forecaster, horizon: int, n_cutoffs: int = 3,
     ts: list | None = None, covariates_for: CovariatesFor | None = None,
 ) -> dict:
-    # --- rolling-origin прогон: копим пары (факт, прогноз) по всем cutoff'ам ---
+    # --- rolling-origin run: accumulate (actual, forecast) pairs over all cutoffs ---
     n = len(values)
     actual: list[float] = []
     yhat: list[float] = []
@@ -81,7 +84,7 @@ def backtest_metrics(
     if not actual:
         return {"coverage": 0.0, "wape": 0.0, "mape": 0.0, "bias": 0.0, "n_points": 0}
 
-    # --- агрегированные метрики качества по накопленным парам ---
+    # --- aggregated quality metrics over the accumulated pairs ---
     a = np.array(actual)
     yh = np.array(yhat)
     p_lo = np.array(lo)
@@ -135,12 +138,12 @@ def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | Non
     job = job.resolved()
     from norn_core.config import get_settings
 
-    # --- параметры прогона и выбор форкастера ---
+    # --- run parameters and forecaster selection ---
     n_cutoffs = get_settings().forecast.calibration.n_cutoffs
     forecaster = forecaster or make_forecaster(job)
     run_id = str(uuid.uuid4())
 
-    # --- посегментная калибровка: ряд из ClickHouse -> метрики (+ по-точечные пары) ---
+    # --- per-segment calibration: series from ClickHouse -> metrics (+ per-point pairs) ---
     step = _STEP[job.grain]
     policy = get_settings().forecast.covariates.horizon_policy
     rows: list[list] = []
@@ -151,10 +154,10 @@ def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | Non
         if not vals:
             continue
         seg_key = _segment_key(dims)
-        # --- XReg: те же ковариаты, что у боевого прогона (явные + подтверждённые leads).
-        # Ряд лидера тянем на всю длину сегмента (+lag) ОДИН раз; на каждом cutoff'е
-        # обрезаем его по концу контекста — в проде будущее лидера неизвестно, и
-        # бэктест без этой обрезки имел бы lookahead-утечку.
+        # --- XReg: the same covariates as the live run (explicit + confirmed leads).
+        # We pull the leader series for the full segment length (+lag) ONCE; at each
+        # cutoff we trim it to the end of the context — in prod the leader's future is
+        # unknown, and a backtest without this trim would have a lookahead leak.
         sources = [
             (spec, covariate_series(client, spec.mart, spec.metric, spec.segment,
                                     len(seg_ts) + spec.lag))
@@ -197,7 +200,7 @@ def calibrate_job(job: ForecastJob, client: Client, forecaster: Forecaster | Non
                 bt_model, now,
             ])
 
-    # --- запись метрик в forecast_segment + по-точечного бэктеста в forecast_point ---
+    # --- write metrics to forecast_segment + per-point backtest to forecast_point ---
     if rows:
         client.insert(
             "forecast_segment", rows,

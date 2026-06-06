@@ -1,19 +1,19 @@
 """
 packages/forecast/src/norn_forecast/timesfm_worker.py
 
-FastAPI-воркер прогнозов платформы norn — HTTP-граница вокруг модели. Изолирует
-тяжёлый torch/TimesFM в отдельном процессе (контейнере): TimesFMForecaster ходит
-сюда по сети. Модель задаётся через Protocol и инъектируется, поэтому HTTP-контракт
-можно тестировать на фейковой модели без torch, а реальную TimesFM подставлять
-только в контейнере воркера.
+FastAPI forecast worker for the norn platform — the HTTP boundary around the
+model. Isolates the heavy torch/TimesFM in a separate process (container):
+TimesFMForecaster reaches it over the network. The model is declared via a
+Protocol and injected, so the HTTP contract can be tested against a fake model
+without torch, while the real TimesFM is wired in only inside the worker container.
 
-Методы:
+Methods:
 - TimesFMModel — Protocol: predict(values, horizon, quantiles,
   dynamic_numerical_covariates=None) -> list[dict].
-- ForecastRequest — pydantic-схема тела запроса (values/horizon/quantiles/
+- ForecastRequest — pydantic schema of the request body (values/horizon/quantiles/
   dynamic_numerical_covariates).
-- create_app(model) -> FastAPI — приложение с POST /forecast и GET /health,
-  замыкающее переданную модель.
+- create_app(model) -> FastAPI — application with POST /forecast and GET /health,
+  closing over the provided model.
 """
 from __future__ import annotations
 

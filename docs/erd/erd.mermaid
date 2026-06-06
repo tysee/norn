@@ -1,8 +1,8 @@
-%% Norn — ERD (репозиторий tysee/norn)
-%% Инвариант: домен-агностичная схема — generic-контракт (forecast_point/forecast_segment) поверх любого warehouse; конкретные метрики/размерности/значения ниже — лишь ПРИМЕРЫ (инстанс/вертикал), а не платформенные дефолты.
-%% Stores:  [META] = addon Postgres (рядом с Lightdash)
-%%          [CH]   = ClickHouse (факты, прогнозы)
-%%          [LD]   = Lightdash-owned Postgres (читаем, не владеем)
+%% Norn — ERD (repository tysee/norn)
+%% Invariant: domain-agnostic schema — a generic contract (forecast_point/forecast_segment) on top of any warehouse; the concrete metrics/dimensions/values below are merely EXAMPLES (instance/vertical), not platform defaults.
+%% Stores:  [META] = addon Postgres (next to Lightdash)
+%%          [CH]   = ClickHouse (facts, forecasts)
+%%          [LD]   = Lightdash-owned Postgres (we read it, we do not own it)
 erDiagram
 
     %% ---------- Integration / config [META] ----------
@@ -37,7 +37,7 @@ erDiagram
         uuid id PK
         uuid project_id FK
         string name
-        string source_table "mart в warehouse (CH/BigQuery/Snowflake/Postgres — см. CONNECTION.type)"
+        string source_table "mart in the warehouse (CH/BigQuery/Snowflake/Postgres — see CONNECTION.type)"
         string timestamp_column
         string value_column
         string grain "hourly | daily | weekly"
@@ -52,7 +52,7 @@ erDiagram
     METRIC_DIMENSION {
         uuid id PK
         uuid metric_definition_id FK
-        string name "пример: размерности из конфигурации инстанса"
+        string name "example: dimensions from the instance configuration"
         string ch_type "LowCardinality(String) | String"
         boolean is_default_slice
     }
@@ -159,11 +159,11 @@ erDiagram
     FORECAST_POINT ||--o{ ACTUAL_VS_FORECAST : "forecast side"
 
     MART_METRIC {
-        datetime ts PK "[warehouse] dbt-built; mart определяется инстансом, столбцы/значения — примеры"
-        string dim_1 "пример: размерность инстанса"
-        string dim_2 "пример: размерность инстанса"
-        string dim_n "пример: размерность инстанса"
-        float value "любая числовая метрика (конфигурируется инстансом)"
+        datetime ts PK "[warehouse] dbt-built; the mart is defined by the instance, columns/values are examples"
+        string dim_1 "example: instance dimension"
+        string dim_2 "example: instance dimension"
+        string dim_n "example: instance dimension"
+        float value "any numeric metric (configured by the instance)"
     }
 
     ACTUAL_VS_FORECAST {

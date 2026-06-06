@@ -1,20 +1,20 @@
 """
 packages/forecast/src/norn_forecast/runner.py
 
-Исполнитель forecast-job платформы norn — оркестрация одного прогона. Раскрывает
-job в набор сегментов, тянет последние context_length точек ряда из ClickHouse,
-прогоняет через выбранный форкастер и материализует результат в контракт-таблицы:
-будущие точки в forecast_point, сводку прогона в forecast_run. Эти таблицы затем
-читают MCP-инструменты, которыми пользуется агент.
+The forecast-job executor of the norn platform — orchestration of a single run. Expands
+a job into a set of segments, pulls the last context_length points of the series from ClickHouse,
+runs them through the chosen forecaster and materializes the result into the contract tables:
+future points into forecast_point, the run summary into forecast_run. These tables are then
+read by the MCP tools that the agent uses.
 
-Методы:
-- run_job(job, client, forecaster=None) -> str — выполняет весь прогон,
-  возвращает run_id.
-Внутренние помощники:
-- _segments(client, job) -> list[dict] — список сегментов (DISTINCT по dimensions).
-- _segment_key(dims) -> str — стабильный строковый ключ сегмента ("all" без dims).
-- _series(client, job, dims) -> (timestamps, values) — последние точки ряда сегмента
-  в хронологическом порядке.
+Methods:
+- run_job(job, client, forecaster=None) -> str — executes the whole run,
+  returns run_id.
+Internal helpers:
+- _segments(client, job) -> list[dict] — list of segments (DISTINCT over dimensions).
+- _segment_key(dims) -> str — stable string key of a segment ("all" when no dims).
+- _series(client, job, dims) -> (timestamps, values) — the latest points of a segment's series
+  in chronological order.
 """
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def _series(client: Client, job: ForecastJob, dims: dict) -> tuple[list[datetime
 
 
 def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = None) -> str:
-    # --- подготовка прогона: id, форкастер, шаг времени, список сегментов ---
+    # --- run setup: id, forecaster, time step, list of segments ---
     job = job.resolved()
     run_id = str(uuid.uuid4())
     forecaster = forecaster or make_forecaster(job)
@@ -98,10 +98,10 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
     points: list[list] = []
     used_covariates = False
 
-    # --- по каждому сегменту: ряд -> прогноз -> строки будущих точек ---
-    # Весь цикл прогнозирования под try: при сбое форкастера (напр. TimesFM-воркер
-    # недоступен) пишем forecast_run со status='failed' (прогон становится виден в
-    # контракте, есть аудит) и поднимаем понятную ошибку — без тихого фолбека.
+    # --- per segment: series -> forecast -> rows of future points ---
+    # The whole forecasting loop is under try: on a forecaster failure (e.g. the TimesFM
+    # worker is unavailable) we write forecast_run with status='failed' (the run becomes visible
+    # in the contract, there is an audit trail) and raise a clear error — with no silent fallback.
     try:
         for dims in segments:
             ts, vals = _series(client, job, dims)
@@ -115,10 +115,10 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
             # breaking the exact-ts join from forecast to realized actuals.
             if last_ts.tzinfo is None:
                 last_ts = last_ts.replace(tzinfo=UTC)
-            # --- ковариаты: ряд лидера из long-mart, выровненный на контекст+горизонт ---
-            # лидер берётся из long-mart (metric_name+segment_key), независимо от job.source
-            # (это широкая per-metric витрина цели). Тянем context_length+lag точек, чтобы
-            # сдвиг (t - lag) был покрыт; value-binding параметризован, mart — через identifier.
+            # --- covariates: leader series from the long mart, aligned over context+horizon ---
+            # the leader is taken from the long mart (metric_name+segment_key), independent of job.source
+            # (this is the wide per-metric mart of the target). We pull context_length+lag points so that
+            # the shift (t - lag) is covered; value-binding is parameterized, the mart goes through identifier.
             covs: dict[str, list[float]] = {}
             for spec in resolve_covariate_specs(client, job, seg_key):
                 s_ts, s_vals = covariate_series(
@@ -128,15 +128,15 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
                 arr = build_covariate_array(ts, s_ts, s_vals, spec.lag, job.horizon, step, policy)
                 if arr is not None:
                     covs[f"{spec.segment}:{spec.metric}@lag{spec.lag}"] = arr
-            # без ковариат -> вызов без covariates -> обычный прогноз (дефолт, без изменений);
-            # это сохраняет совместимость с форкастерами, чей forecast() не знает про ковариаты.
+            # no covariates -> call without covariates -> a plain forecast (default, unchanged);
+            # this keeps compatibility with forecasters whose forecast() knows nothing about covariates.
             if covs:
                 used_covariates = True
                 fc = forecaster.forecast(vals, job.horizon, covariates=covs)
             else:
                 fc = forecaster.forecast(vals, job.horizon)
             now = datetime.now(UTC)
-            # будущая метка времени = последняя фактическая + шаг * номер горизонта
+            # future timestamp = last actual + step * horizon step number
             for row in fc:
                 points.append([
                     run_id, job.metric, seg_key,
@@ -146,8 +146,8 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
                     None, job.model, now,
                 ])
     except ValueError:
-        # input/identifier validation (напр. небезопасный source) — fail fast,
-        # это не "сбойный прогон", а отвергнутый job; не пишем forecast_run.
+        # input/identifier validation (e.g. an unsafe source) — fail fast,
+        # this is not a "failed run" but a rejected job; we do not write forecast_run.
         raise
     except Exception as e:
         client.insert(
@@ -161,7 +161,7 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
         )
         raise RuntimeError(f"forecast run {run_id} failed (model={job.model}): {e}") from e
 
-    # --- запись прогноза в forecast_point ---
+    # --- write the forecast into forecast_point ---
     if points:
         client.insert(
             "forecast_point", points,
@@ -172,8 +172,8 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
             ],
         )
 
-    # --- сводка прогона в forecast_run (всегда, даже без точек) ---
-    # отмечаем XReg-прогон в model_version, чтобы прогон с ковариатами был отличим
+    # --- run summary into forecast_run (always, even with no points) ---
+    # mark an XReg run in model_version so a run with covariates is distinguishable
     model_version = "v0+xreg" if used_covariates else "v0"
     client.insert(
         "forecast_run",

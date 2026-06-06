@@ -1,24 +1,26 @@
 """
 packages/agent/src/norn_agent/analyze.py
 
-Оркестратор одного прохода анализа зависимостей — точка сборки слоя в платформе
-norn. Связывает витрину метрик (ClickHouse mart_metric), статистические методы и
-LLM-агента: достаёт свежие ряды двух сегментов, выравнивает их по общему времени,
-прогоняет методы-улики, фиксирует улики в metric_dependency, а структурированное
-решение агента — в dependency_explanation. Знает о прошлом прогоне, чтобы агент
-оценивал дрейф зависимости.
+Orchestrator for a single dependency-analysis pass — the assembly point of the
+layer in the norn platform. It wires together the metric mart (ClickHouse
+mart_metric), the statistical methods and the LLM agent: it pulls the latest
+series of two segments, aligns them on a common timeline, runs the evidence
+methods, records the evidence in metric_dependency, and the agent's structured
+decision — in dependency_explanation. It knows about the previous run so the
+agent can assess dependency drift.
 
-Публичные функции:
-- analyze_dependencies(job, client, agent=None) -> AnalysisResult — выполняет
-  полный проход для одной job. Статистика (metric_dependency) пишется всегда; при
-  недоступности LLM (LLMUnavailable) объяснение пропускается с ERROR-логом и полным
-  traceback, а результат явно сообщает деградацию (explained=False + причина).
+Public functions:
+- analyze_dependencies(job, client, agent=None) -> AnalysisResult — performs a
+  full pass for a single job. Statistics (metric_dependency) are always written;
+  when the LLM is unavailable (LLMUnavailable) the explanation is skipped with an
+  ERROR log and a full traceback, and the result explicitly reports the
+  degradation (explained=False + reason).
 
-Внутренние помощники:
-- _prior_measurements — улики последнего прошлого прогона для той же тройки
-  метрика/source/target (для drift-aware суждения).
-- _series — чтение последних context_length точек ряда для (метрика, сегмент).
-- _align — выравнивание двух рядов по общим временным меткам + окно наблюдения.
+Internal helpers:
+- _prior_measurements — evidence from the most recent prior run for the same
+  metric/source/target triple (for drift-aware judging).
+- _series — reads the last context_length points of the series for (metric, segment).
+- _align — aligns two series on common timestamps + the observation window.
 """
 from __future__ import annotations
 
@@ -48,7 +50,7 @@ class AnalysisResult:
 
 def _prior_measurements(client: Client, job: DependencyJob) -> list[DependencyMeasurement]:
     """Measurements from the most recent PRIOR run for this metric/source/target."""
-    # --- найти id последнего прошлого прогона для этой тройки ---
+    # --- find the id of the most recent prior run for this triple ---
     run = client.query(
         "SELECT analysis_run_id FROM metric_dependency "
         "WHERE metric_name=%(m)s AND source_segment=%(s)s AND target_segment=%(t)s "
@@ -57,7 +59,7 @@ def _prior_measurements(client: Client, job: DependencyJob) -> list[DependencyMe
     ).result_rows
     if not run:
         return []
-    # --- поднять улики того прогона и восстановить модели измерений ---
+    # --- pull that run's evidence and rebuild the measurement models ---
     rows = client.query(
         "SELECT method, lag, score, direction, p_value, confidence FROM metric_dependency "
         "WHERE analysis_run_id=%(r)s",
@@ -83,14 +85,14 @@ def _series(client: Client, mart: str, metric: str, segment: str, context_length
 
 
 def _align(src_ts, src_vals, tgt_ts, tgt_vals):
-    # --- индекс target по времени для поиска общих меток ---
+    # --- index target by time to find common timestamps ---
     tmap = dict(zip(tgt_ts, tgt_vals))
-    # --- пересечение по ts, отсортированное по времени ---
+    # --- intersection on ts, sorted by time ---
     common = sorted(
         ((ts, sv, tmap[ts]) for ts, sv in zip(src_ts, src_vals) if ts in tmap),
         key=lambda x: x[0],
     )
-    # --- разложить на параллельные ряды и вычислить окно наблюдения ---
+    # --- split into parallel series and compute the observation window ---
     src = [c[1] for c in common]
     tgt = [c[2] for c in common]
     window = (common[0][0], common[-1][0]) if common else (datetime(1970, 1, 1), datetime(1970, 1, 1))
@@ -98,18 +100,18 @@ def _align(src_ts, src_vals, tgt_ts, tgt_vals):
 
 
 def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> AnalysisResult:
-    # --- подставить незаданные тюнинги job из конфига и выдать id прогона ---
+    # --- fill in the job's unset tunables from config and mint a run id ---
     job = job.resolved()
     run_id = str(uuid.uuid4())
-    # --- extract: прочитать ряды обоих сегментов и выровнять по общему времени ---
+    # --- extract: read the series of both segments and align on common time ---
     s_ts, s_v = _series(client, job.mart, job.metric, job.source_segment, job.context_length)
     t_ts, t_v = _series(client, job.mart, job.metric, job.target_segment, job.context_length)
     src, tgt, (w0, w1) = _align(s_ts, s_v, t_ts, t_v)
-    # Прогресс-лог: deps-проход длится минуты (LLM-судья), без вех выглядит зависшим.
+    # Progress log: the deps pass lasts minutes (LLM judge); without milestones it looks hung.
     logger.info("run %s extract: %d aligned points (%s..%s) %s -> %s",
                 run_id, len(src), w0, w1, job.source_segment, job.target_segment)
 
-    # --- compute: прогнать выбранные методы-улики (granger получает тюнинги из конфига) ---
+    # --- compute: run the selected evidence methods (granger gets its tunables from config) ---
     from norn_core.config import get_settings
 
     a = get_settings().agent
@@ -127,7 +129,7 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> Anal
     # Look up the previous run BEFORE inserting this run's rows (drift-aware judging).
     prior = _prior_measurements(client, job)
 
-    # --- write-back: зафиксировать улики методов в metric_dependency ---
+    # --- write-back: record the methods' evidence into metric_dependency ---
     dep_rows = [
         [run_id, job.metric, job.source_segment, job.target_segment, m.method,
          m.lag, m.score, m.direction, m.p_value, m.confidence, w0, w1, datetime.now(UTC)]
@@ -142,7 +144,7 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> Anal
         ],
     )
 
-    # --- judge: отдать улики (и прошлые) агенту за решением о реальности ---
+    # --- judge: hand the evidence (and the prior one) to the agent for a reality decision ---
     meta = {
         "source_segment": job.source_segment,
         "target_segment": job.target_segment,
@@ -160,10 +162,11 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> Anal
         logger.error("LLM explanation skipped for run %s (provider=%s model=%s): %s",
                      run_id, a.provider, a.model, e, exc_info=True)
         decision, explained, reason = DependencyDecision(relations=[]), False, str(e)
-    # --- write-back: сохранить объяснения агента в dependency_explanation ---
-    # Сегмент-ключи берём из job (канонические 'symbol=...'), а НЕ из ответа LLM:
-    # модель часто срезает префикс 'symbol=', из-за чего ключи расходятся с
-    # metric_dependency и LEFT-join в get_dependencies промахивается (E2E-контракт-баг).
+    # --- write-back: save the agent's explanations into dependency_explanation ---
+    # Segment keys are taken from the job (canonical 'symbol=...'), NOT from the LLM
+    # response: the model often strips the 'symbol=' prefix, which makes the keys
+    # diverge from metric_dependency and the LEFT join in get_dependencies miss
+    # (E2E contract bug).
     exp_rows = [
         [run_id, job.metric, job.source_segment, job.target_segment, r.lag, r.direction,
          1 if r.is_real else 0, r.confidence, r.explanation, r.caveats, r.change_note,

@@ -1,21 +1,23 @@
 """
 packages/agent/src/norn_agent/agent.py
 
-LLM-уровень слоя зависимостей: PydanticAI-агент превращает статистические улики
-методов в структурированное решение «зависимость реальна или ложная» с
-объяснением и калибровкой уверенности. Здесь живут системный промпт (правила
-суждения, в т.ч. оговорка «корреляция != причинность» и сравнение с прошлым
-прогоном) и тонкая обёртка вокруг Agent.run_sync. Модель берётся из конфига norn.
+LLM layer of the dependency subsystem: a PydanticAI agent turns the methods'
+statistical evidence into a structured "dependency is real or spurious" decision
+with an explanation and calibrated confidence. This is where the system prompt
+lives (judging rules, including the "correlation != causation" caveat and the
+comparison against the previous run) and a thin wrapper around Agent.run_sync.
+The model is taken from the norn config.
 
-Публичные функции:
-- build_agent(model=None) -> Agent — собирает агента с output_type=DependencyDecision
-  и системным промптом; модель по умолчанию читается из настроек платформы.
+Public functions:
+- build_agent(model=None) -> Agent — assembles an agent with
+  output_type=DependencyDecision and the system prompt; the default model is read
+  from the platform settings.
 - judge_dependencies(measurements, meta, prior_measurements=None, agent=None)
-  -> DependencyDecision — формирует промпт из текущих (и опционально прошлых)
-  улик и возвращает решение агента по каждой зависимости. При известном
-  инфраструктурном сбое (нет креденшела/неверный конфиг/ошибка модели или
-  транспорта) поднимает LLMUnavailable — без тихой деградации. Может ходить в
-  agent-воркер (`agent.worker_url`); сбой воркера == LLMUnavailable.
+  -> DependencyDecision — builds a prompt from the current (and optionally prior)
+  evidence and returns the agent's decision for each dependency. On a known
+  infrastructure failure (missing credential / invalid config / model or
+  transport error) it raises LLMUnavailable — no silent degradation. It may call
+  out to the agent worker (`agent.worker_url`); a worker failure == LLMUnavailable.
 """
 from __future__ import annotations
 
@@ -30,7 +32,7 @@ from norn_agent.contract import DependencyDecision, DependencyMeasurement
 
 
 class LLMUnavailable(RuntimeError):
-    """LLM/провайдер недоступен или вернул некорректный ответ — объяснение зависимости пропущено."""
+    """The LLM/provider is unavailable or returned an invalid response — the dependency explanation is skipped."""
 
 
 SYSTEM_PROMPT = (
@@ -51,8 +53,8 @@ SYSTEM_PROMPT = (
 def _build_model(a):
     """Construct the pydantic-ai model for the configured provider (lazy SDK imports).
 
-    Секреты — только из env (per-provider ключи), никаких хардкодов. Ничего не
-    вызывает по сети: только конструирует объект модели/провайдера.
+    Secrets come only from env (per-provider keys), no hardcoding. Nothing is
+    called over the network: it only constructs the model/provider object.
     """
     import os
 
@@ -91,7 +93,7 @@ def _build_model(a):
 
 
 def _output_type(a):
-    """Режим структурированного вывода берётся из config (agent.output_mode), без хардкода под провайдера."""
+    """The structured-output mode is taken from config (agent.output_mode), not hardcoded per provider."""
     m = a.output_mode
     if m == "tool":
         return DependencyDecision
@@ -107,10 +109,10 @@ def _output_type(a):
 
 
 def build_agent(model=None) -> Agent:
-    # --- явный override (в т.ч. TestModel в тестах) — собираем агента как есть ---
+    # --- explicit override (incl. TestModel in tests) — assemble the agent as-is ---
     if model is not None:
         return Agent(model, output_type=DependencyDecision, instructions=SYSTEM_PROMPT)
-    # --- дефолт: строим модель-объект и режим вывода под провайдера из конфига ---
+    # --- default: build the model object and output mode for the provider from config ---
     from norn_core.config import get_settings
 
     a = get_settings().agent
@@ -122,7 +124,7 @@ def build_agent(model=None) -> Agent:
 
 
 def _judge_via_worker(url, measurements, meta, prior_measurements) -> DependencyDecision:
-    """POST /judge на agent-воркер. Любой сбой -> LLMUnavailable (явная деградация)."""
+    """POST /judge to the agent worker. Any failure -> LLMUnavailable (explicit degradation)."""
     import httpx
 
     body = {
@@ -148,35 +150,36 @@ def judge_dependencies(
     prior_measurements: list[DependencyMeasurement] | None = None,
     agent: Agent | None = None,
 ) -> DependencyDecision:
-    # --- режим agent-воркера: судья за HTTP-границей (включается agent.worker_url) ---
-    # Явно переданный agent (тесты, локальные прогоны) главнее worker_url.
+    # --- agent-worker mode: the judge lives behind an HTTP boundary (enabled by agent.worker_url) ---
+    # An explicitly passed agent (tests, local runs) takes precedence over worker_url.
     if agent is None:
         from norn_core.config import get_settings
 
         worker_url = get_settings().agent.worker_url
         if worker_url:
             return _judge_via_worker(worker_url, measurements, meta, prior_measurements)
-    # --- сборка модели/агента и вызов — всё под try ---
-    # Узко перехватываем только известные инфраструктурные сбои (нет креденшела,
-    # неверный конфиг, ошибка модели/транспорта) и ре-райзим типизированно
-    # LLMUnavailable. Граница (analyze_dependencies) ловит его, логирует traceback
-    # и явно деградирует. Программные баги НЕ маскируются — пробрасываются как есть.
+    # --- build the model/agent and call it — all under try ---
+    # We narrowly catch only known infrastructure failures (missing credential,
+    # invalid config, model/transport error) and re-raise them as a typed
+    # LLMUnavailable. The boundary (analyze_dependencies) catches it, logs the
+    # traceback and degrades explicitly. Programming bugs are NOT masked — they
+    # propagate as-is.
     from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior, UserError
 
     try:
         agent = agent or build_agent()
-        # --- собрать промпт: шапка с сегментами/метрикой + текущие улики методов ---
+        # --- build the prompt: header with segments/metric + the methods' current evidence ---
         prompt = (
             f"Segments: source={meta['source_segment']} target={meta['target_segment']} "
             f"metric={meta['metric_name']}.\nCurrent evidence:\n"
             + json.dumps([m.model_dump() for m in measurements], indent=2)
         )
-        # --- добавить улики прошлого прогона для оценки дрейфа зависимости ---
+        # --- add the previous run's evidence to assess dependency drift ---
         if prior_measurements:
             prompt += "\nPrior evidence (previous run):\n" + json.dumps(
                 [m.model_dump() for m in prior_measurements], indent=2
             )
-        # --- синхронный вызов агента -> структурированное решение ---
+        # --- synchronous agent call -> structured decision ---
         return agent.run_sync(prompt).output
     except (KeyError, ValueError, UnexpectedModelBehavior, ModelHTTPError, UserError,
             ConnectionError, OSError) as e:

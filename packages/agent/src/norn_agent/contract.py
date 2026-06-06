@@ -1,20 +1,21 @@
 """
 packages/agent/src/norn_agent/contract.py
 
-Типизированный контракт слоя зависимостей платформы norn — единый словарь данных
-между оркестратором, статистическими методами и LLM-агентом. Pydantic-модели здесь
-описывают вход (что анализировать), промежуточные улики методов и структурированный
-выход агента, гарантируя совместимость со схемой ClickHouse. Доменно-нейтрально:
-конкретная метрика и сегменты приходят извне.
+Typed contract for the norn platform's dependency layer — a single data dictionary
+shared by the orchestrator, the statistical methods, and the LLM agent. The Pydantic
+models here describe the input (what to analyze), the intermediate evidence produced
+by the methods, and the agent's structured output, guaranteeing compatibility with
+the ClickHouse schema. Domain-neutral: the concrete metric and segments come from
+outside.
 
-Публичные классы:
-- DependencyJob — конфиг анализа (метрика, mart, два сегмента, max_lag,
-  context_length, methods); .from_yaml загружает job из YAML, .resolved()
-  доливает незаданные тюнинги из настроек платформы.
-- DependencyMeasurement — одна улика метода: lag/score/direction/p_value/confidence.
-- DependencyRelation — решение агента по одной зависимости (is_real, объяснение,
-  оговорки, заметка о дрейфе относительно прошлого прогона).
-- DependencyDecision — обёртка-список DependencyRelation, output_type агента.
+Public classes:
+- DependencyJob — analysis config (metric, mart, two segments, max_lag,
+  context_length, methods); .from_yaml loads a job from YAML, .resolved()
+  fills in unset tunables from the platform settings.
+- DependencyMeasurement — a single piece of method evidence: lag/score/direction/p_value/confidence.
+- DependencyRelation — the agent's decision for one dependency (is_real, explanation,
+  caveats, note on drift relative to the previous run).
+- DependencyDecision — a list wrapper around DependencyRelation, the agent's output_type.
 """
 from __future__ import annotations
 

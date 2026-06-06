@@ -1,16 +1,16 @@
 """
 packages/core/src/norn_core/clickhouse.py
 
-Единая точка подключения платформы к warehouse (ClickHouse). Инкапсулирует разбор
-строки подключения (DSN) и сборку конфигурации клиента из config-слоя, чтобы все
-сервисы norn (forecast-воркер, агент, integration-слой) открывали соединение
-одинаково и не дублировали логику парсинга и выбора порта/протокола.
+The platform's single connection point to the warehouse (ClickHouse). Encapsulates parsing
+the connection string (DSN) and assembling the client configuration from the config layer, so that all
+norn services (forecast-worker, agent, integration layer) open the connection
+the same way and do not duplicate the parsing and port/protocol selection logic.
 
-Методы:
-- parse_dsn(dsn) -> dict — разбор DSN в параметры подключения (host/port/user/password/database/secure),
-  с подстановкой портов по умолчанию (8443 для https, 8123 для http) и проверкой наличия имени БД.
-- get_client(dsn=None) -> Client — собирает клиент ClickHouse: из явного DSN, либо из config-слоя,
-  где DSN из env NORN_CLICKHOUSE_URL имеет приоритет над пофайловыми host/port/...
+Methods:
+- parse_dsn(dsn) -> dict — parse a DSN into connection parameters (host/port/user/password/database/secure),
+  substituting default ports (8443 for https, 8123 for http) and checking that the DB name is present.
+- get_client(dsn=None) -> Client — assemble a ClickHouse client: from an explicit DSN, or from the config layer,
+  where the DSN from env NORN_CLICKHOUSE_URL takes priority over the per-file host/port/...
 """
 from __future__ import annotations
 
@@ -35,14 +35,14 @@ def _safe_identifier(name: str) -> str:
 
 
 def parse_dsn(dsn: str) -> dict:
-    # --- разбор DSN: схема задаёт защищённость соединения, путь — имя БД ---
+    # --- DSN parsing: the scheme sets connection security, the path is the DB name ---
     u = urlparse(dsn)
     secure = u.scheme == "https"
     database = u.path.lstrip("/")
     if not database:
         # Never echo the DSN — it carries the ClickHouse password (credential leak).
         raise ValueError("ClickHouse DSN is missing the database path component")
-    # --- сборка параметров: порт по умолчанию зависит от протокола ---
+    # --- parameter assembly: the default port depends on the protocol ---
     return {
         "host": u.hostname,
         "port": u.port or (8443 if secure else 8123),
@@ -60,17 +60,17 @@ def _db_settings():
 
 
 def get_client(dsn: str | None = None) -> Client:
-    # --- выбор источника конфигурации подключения ---
+    # --- selecting the connection configuration source ---
     if dsn is not None:
-        # явный DSN от вызывающего имеет наивысший приоритет
+        # an explicit DSN from the caller has the highest priority
         cfg = parse_dsn(dsn)
     else:
         db = _db_settings()
         if db.dsn:
-            # DSN из config-слоя (env NORN_CLICKHOUSE_URL) переопределяет пофайловые поля
+            # the DSN from the config layer (env NORN_CLICKHOUSE_URL) overrides the per-file fields
             cfg = parse_dsn(db.dsn)
         else:
-            # пофайловые host/port/user/... как fallback
+            # per-file host/port/user/... as a fallback
             cfg = {
                 "host": db.host, "port": db.port, "username": db.user,
                 "password": db.password, "database": db.database, "secure": db.secure,

@@ -1,31 +1,31 @@
 # config/forecast.yml
-# Параметры подсистемы прогноза платформы norn: значения по умолчанию для job'ов,
-# набор квантилей прогноза, настройки воркера модели TimesFM и параметры калибровки.
-# Значения здесь — дефолты платформы; конкретный job-YAML может их переопределять.
+# Parameters of the norn platform's forecast subsystem: default values for jobs,
+# the set of forecast quantiles, TimesFM model worker settings, and calibration parameters.
+# Values here are platform defaults; a specific job-YAML may override them.
 
-# Дефолты прогноза, применяемые если job их не задаёт.
+# Forecast defaults, applied if a job does not set them.
 defaults:
-  horizon: 30          # глубина прогноза вперёд, в шагах ряда
-  context_length: 512  # длина исторического окна (число точек), подаваемого модели
-  seasonality: 7       # период сезонности ряда, в шагах (напр. 7 = недельная)
+  horizon: 30          # forecast depth ahead, in series steps
+  context_length: 512  # length of the historical window (number of points) fed to the model
+  seasonality: 7       # series seasonality period, in steps (e.g. 7 = weekly)
 
-# Квантили прогноза: нижняя/медиана/верхняя — формируют интервалы неопределённости.
+# Forecast quantiles: lower/median/upper — form the uncertainty intervals.
 quantiles: [0.1, 0.5, 0.9]
 
-# Настройки внешнего воркера модели TimesFM.
+# Settings of the external TimesFM model worker.
 timesfm:
-  worker_url: "http://localhost:9100"  # URL HTTP-воркера, выполняющего инференс TimesFM
-  max_context: 1024                     # верхний предел длины контекста, принимаемой моделью
-  max_horizon: 1024                     # верхний предел глубины прогноза модели
+  worker_url: "http://localhost:9100"  # URL of the HTTP worker that runs TimesFM inference
+  max_context: 1024                     # upper limit of the context length accepted by the model
+  max_horizon: 1024                     # upper limit of the model's forecast depth
 
-# Параметры rolling-origin калибровки.
+# Rolling-origin calibration parameters.
 calibration:
-  n_cutoffs: 8   # число origin'ов для rolling-origin; >=8 для устойчивой оценки (3 давало шумные метрики)
+  n_cutoffs: 8   # number of origins for rolling-origin; >=8 for a stable estimate (3 gave noisy metrics)
 
-# ковариаты (XReg): horizon_policy strict (lag>=horizon) | ffill (продлить лидера); режим XReg
+# covariates (XReg): horizon_policy strict (lag>=horizon) | ffill (extend the leader); XReg mode
 covariates:
   horizon_policy: strict
-  xreg_mode: "xreg + timesfm"  # формат TimesFM 2.5 (с пробелами): "xreg + timesfm" | "timesfm + xreg"
+  xreg_mode: "xreg + timesfm"  # TimesFM 2.5 format (with spaces): "xreg + timesfm" | "timesfm + xreg"
 
-# Сколько месяцев хранить контракт-таблицы (TTL поверх PARTITION BY месяц). 0 = без авто-удаления.
+# How many months to retain the contract tables (TTL on top of PARTITION BY month). 0 = no auto-deletion.
 retention_months: 12

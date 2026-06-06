@@ -1,22 +1,22 @@
 """
 packages/forecast/src/norn_forecast/timesfm_model.py
 
-Реальный адаптер тяжёлой модели TimesFM 2.5 (torch) для платформы norn. Грузит и
-компилирует модель один раз при старте и отдаёт квантильный прогноз в формате,
-который ждёт HTTP-воркер. torch и timesfm импортируются лениво (внутри методов),
-чтобы быстрый тест-сьют и остальные процессы norn не тянули тяжёлые зависимости —
-они нужны только в контейнере воркера.
+Real adapter for the heavy TimesFM 2.5 model (torch) for the norn platform. Loads
+and compiles the model once at startup and returns a quantile forecast in the
+format the HTTP worker expects. torch and timesfm are imported lazily (inside
+methods) so that the fast test suite and the other norn processes do not pull in
+the heavy dependencies — they are only needed inside the worker container.
 
-Классы/методы:
-- TimesFM25Model.__init__(max_context, max_horizon, torch_compile) — загрузка и
-  компиляция TimesFM 2.5; лимиты по умолчанию из env NORN_TIMESFM_MAX_CONTEXT/HORIZON
-  (воркер автономен, без norn_core.config).
+Classes/methods:
+- TimesFM25Model.__init__(max_context, max_horizon, torch_compile) — loading and
+  compilation of TimesFM 2.5; default limits from env NORN_TIMESFM_MAX_CONTEXT/HORIZON
+  (the worker is self-contained, without norn_core.config).
 - TimesFM25Model.predict(values, horizon, quantiles,
-  dynamic_numerical_covariates=None) -> list[dict] — прогноз и раскладка
-  квантильных столбцов модели в p10/p50/p90 на каждый шаг горизонта. С
-  ковариатами вызывает forecast_with_covariates (xreg_mode из env
-  NORN_TIMESFM_XREG_MODE), без — обычный forecast (дефолтный путь не меняется).
-- build_app() -> FastAPI — точка входа контейнера: create_app + реальная модель.
+  dynamic_numerical_covariates=None) -> list[dict] — forecast and mapping of the
+  model's quantile columns into p10/p50/p90 for each horizon step. With
+  covariates it calls forecast_with_covariates (xreg_mode from env
+  NORN_TIMESFM_XREG_MODE), without them — the plain forecast (the default path is unchanged).
+- build_app() -> FastAPI — container entry point: create_app + the real model.
 """
 from __future__ import annotations
 
@@ -30,15 +30,16 @@ class TimesFM25Model:
     ) -> None:
         import os
 
-        # --- лимиты контекста/горизонта: аргумент > env > дефолт ---
-        # Воркер автономен (контейнер) и НЕ зависит от norn_core.config: в образе нет
-        # ни norn_core, ни config-YAML. Параметры приходят аргументом или из env.
+        # --- context/horizon limits: argument > env > default ---
+        # The worker is self-contained (a container) and does NOT depend on norn_core.config:
+        # the image has neither norn_core nor a config YAML. Parameters come from an
+        # argument or from env.
         max_context = max_context if max_context is not None else int(
             os.environ.get("NORN_TIMESFM_MAX_CONTEXT", "1024"))
         max_horizon = max_horizon if max_horizon is not None else int(
             os.environ.get("NORN_TIMESFM_MAX_HORIZON", "1024"))
 
-        # --- загрузка и компиляция модели (ленивый импорт torch/timesfm) ---
+        # --- model loading and compilation (lazy import of torch/timesfm) ---
         # Lazy imports: torch/timesfm only inside the worker env (never the fast suite).
         import timesfm
 
@@ -54,9 +55,9 @@ class TimesFM25Model:
                 force_flip_invariance=True,
                 infer_is_positive=True,
                 fix_quantile_crossing=True,
-                # XReg-путь (forecast_with_covariates) требует return_backcast=True.
-                # Побочный эффект: forecast() возвращает [backcast, forecast] по оси
-                # времени — predict() срезает последние horizon шагов на обоих путях.
+                # The XReg path (forecast_with_covariates) requires return_backcast=True.
+                # Side effect: forecast() returns [backcast, forecast] along the time
+                # axis — predict() slices the last horizon steps on both paths.
                 return_backcast=True,
             )
         )
@@ -70,19 +71,19 @@ class TimesFM25Model:
     ) -> list[dict]:
         import numpy as np
 
-        # --- инференс модели ---
+        # --- model inference ---
         if dynamic_numerical_covariates:
-            # XReg-путь: лидеры передаются как динамические числовые ковариаты.
-            # Version-sensitive: arg names/shape сверены с установленной TimesFM 2.5 (git);
-            # при расхождении адаптируй здесь — стабильный контракт воркера в FakeModel.
+            # XReg path: leaders are passed as dynamic numerical covariates.
+            # Version-sensitive: arg names/shape checked against the installed TimesFM 2.5 (git);
+            # on a mismatch adapt here — the stable worker contract lives in FakeModel.
             import os
 
             mode = os.environ.get("NORN_TIMESFM_XREG_MODE", "xreg + timesfm")
-            # TimesFM 2.5 ждёт режимы с пробелами ("xreg + timesfm"); компактные
-            # legacy-значения из старых конфигов нормализуем, чтобы не падать.
+            # TimesFM 2.5 expects modes with spaces ("xreg + timesfm"); we normalize the
+            # compact legacy values from old configs so we do not crash.
             mode = {"xreg+timesfm": "xreg + timesfm", "timesfm+xreg": "timesfm + xreg"}.get(mode, mode)
-            # forecast_with_covariates не принимает horizon: глубина выводится из
-            # длины ковариат (len(covariate) - len(values)); runner шлёт context+horizon.
+            # forecast_with_covariates does not take horizon: the depth is derived from
+            # the covariate length (len(covariate) - len(values)); the runner sends context+horizon.
             point_forecast, quantile_forecast = self._model.forecast_with_covariates(
                 inputs=[np.asarray(values, dtype=float)],
                 dynamic_numerical_covariates={
@@ -95,9 +96,9 @@ class TimesFM25Model:
             point_forecast, quantile_forecast = self._model.forecast(
                 horizon=horizon, inputs=[np.asarray(values, dtype=float)]
             )
-        # point_forecast: (1, T); quantile_forecast: (1, T, 10), где T >= horizon
-        # (с return_backcast=True forecast() отдаёт [backcast, forecast]) — берём
-        # последние horizon шагов; XReg-путь уже отдаёт ровно horizon (срез no-op).
+        # point_forecast: (1, T); quantile_forecast: (1, T, 10), where T >= horizon
+        # (with return_backcast=True forecast() returns [backcast, forecast]) — we take
+        # the last horizon steps; the XReg path already returns exactly horizon (slice is a no-op).
         # Quantile columns are [mean, q10, q20, ..., q90] -> column = round(q*10).
         point = point_forecast[0][-horizon:]
         quant = quantile_forecast[0][-horizon:]
@@ -107,7 +108,7 @@ class TimesFM25Model:
 
         lo, mid, hi = quantiles[0], quantiles[1], quantiles[2]
 
-        # --- раскладка квантильных столбцов в p10/p50/p90 по шагам горизонта ---
+        # --- mapping the quantile columns into p10/p50/p90 per horizon step ---
         rows: list[dict] = []
         for h in range(horizon):
             rows.append(

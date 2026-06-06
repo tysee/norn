@@ -1,17 +1,18 @@
 """
 packages/forecast/src/norn_forecast/baseline.py
 
-Baseline-форкастер платформы norn: seasonal-naive с интервалами из конфигурируемых
-квантилей (нормальная аппроксимация, statistics.NormalDist).
-Повторяет значение из прошлого сезонного цикла как точечный прогноз, а ширину
-интервала оценивает по разбросу остатков «период-к-периоду». Лёгкая заглушка без
-torch — держит весь forecast-пайплайн (runner, калибровка, MCP) рабочим до
-подключения тяжёлой модели TimesFM и служит дешёвым эталоном при backtest.
+Baseline forecaster for the norn platform: seasonal-naive with intervals from
+configurable quantiles (normal approximation, statistics.NormalDist).
+It repeats the value from the previous seasonal cycle as the point forecast and
+estimates the interval width from the spread of period-over-period residuals. A
+lightweight stub without torch — it keeps the whole forecast pipeline (runner,
+calibration, MCP) working until the heavy TimesFM model is wired in, and serves
+as a cheap reference baseline in backtests.
 
-Методы:
+Functions:
 - seasonal_naive_forecast(values, horizon, seasonality) -> list[dict] —
-  точечный прогноз y_hat=p50 и границы p10/p90 на каждый шаг горизонта;
-  неопределённость растёт ~sqrt(числа сезонных циклов вперёд).
+  point forecast y_hat=p50 and p10/p90 bounds for each horizon step;
+  uncertainty grows ~sqrt(number of seasonal cycles ahead).
 """
 from __future__ import annotations
 
@@ -19,8 +20,8 @@ import statistics
 
 import numpy as np
 
-# Относительный порог: профильный residual std ниже него считаем точным нулём
-# (гасит float-шум линейного fit на идеально-сезонном ряде).
+# Relative threshold: a profile residual std below it is treated as an exact zero
+# (suppresses float noise from the linear fit on a perfectly seasonal series).
 _ZERO_EPS_REL = 1e-9
 
 
@@ -28,17 +29,17 @@ def seasonal_naive_forecast(
     values: list[float], horizon: int, seasonality: int = 7,
     quantiles: tuple[float, float, float] = (0.1, 0.5, 0.9),
 ) -> list[dict]:
-    # --- валидация входа ---
+    # --- input validation ---
     arr = np.asarray(values, dtype=float)
     n = arr.size
     if n == 0:
         raise ValueError("values must be non-empty")
 
-    # z-множители из конфигурируемых квантилей (нормальная аппроксимация)
+    # z-multipliers from the configurable quantiles (normal approximation)
     z_low = statistics.NormalDist().inv_cdf(quantiles[0])
     z_high = statistics.NormalDist().inv_cdf(quantiles[2])
 
-    # --- оценка масштаба неопределённости (sigma) ---
+    # --- estimate the uncertainty scale (sigma) ---
     if n > seasonality:
         # Period-over-period residuals capture how much each seasonal cycle
         # deviates from the previous one.
@@ -62,7 +63,7 @@ def seasonal_naive_forecast(
     else:
         sigma = 0.0  # too short to estimate seasonal residuals
 
-    # --- сборка строк прогноза на горизонт ---
+    # --- assemble the forecast rows over the horizon ---
     out: list[dict] = []
     for h in range(1, horizon + 1):
         if n >= seasonality:
