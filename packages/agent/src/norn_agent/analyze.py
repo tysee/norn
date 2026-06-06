@@ -162,6 +162,18 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> Anal
         logger.error("LLM explanation skipped for run %s (provider=%s model=%s): %s",
                      run_id, a.provider, a.model, e, exc_info=True)
         decision, explained, reason = DependencyDecision(relations=[]), False, str(e)
+    # --- provenance: the model that actually produced the verdict. In worker
+    # mode the judge runs in another process with its OWN config, so a.model
+    # (the client's) would be wrong — ask the worker (/health reports it).
+    judge_model = a.model
+    if explained and a.worker_url:
+        try:
+            import httpx
+
+            h = httpx.get(f"{a.worker_url.rstrip('/')}/health", timeout=5.0).json()
+            judge_model = h.get("model") or a.model
+        except (httpx.HTTPError, ValueError):
+            pass  # keep the local model as a best-effort fallback
     # --- write-back: save the agent's explanations into dependency_explanation ---
     # Segment keys are taken from the job (canonical 'symbol=...'), NOT from the LLM
     # response: the model often strips the 'symbol=' prefix, which makes the keys
@@ -170,7 +182,7 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> Anal
     exp_rows = [
         [run_id, job.metric, job.source_segment, job.target_segment, r.lag, r.direction,
          1 if r.is_real else 0, r.confidence, r.explanation, r.caveats, r.change_note,
-         a.model, datetime.now(UTC)]
+         judge_model, datetime.now(UTC)]
         for r in decision.relations
     ]
     if exp_rows:
