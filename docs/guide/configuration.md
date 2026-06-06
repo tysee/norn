@@ -101,7 +101,24 @@ All secrets in one place — none of these ever appear in YAML:
 | _(none)_                  | LLM provider `ollama` — needs a running daemon, not a key              |
 
 The full provider matrix (models, `base_url`, `output_mode` recommendations and
-degradation behavior) lives on the [norn-agent page](agent/README.md).
+degradation behavior) lives on the [norn-agent page](agent/README.md); the
+OAuth bearer flow for `openai-oauth` is documented
+[there](agent/README.md#the-openai-oauth-flow-bearer-token-instead-of-an-api-key) too.
+
+### Where to keep them (so they never reach the repo)
+
+Pick by scenario — all three locations are outside version control (`.env` and
+`.envrc` are gitignored; verify with `git check-ignore` if in doubt):
+
+| Scenario | Put secrets in |
+| --- | --- |
+| Local CLI runs (`norn forecast` / `deps` / …) | your shell profile (`~/.zshenv`), or a [direnv](https://direnv.net) `.envrc` in the repo root |
+| Docker services (compose) | `deploy/.env` — compose loads it automatically; only `.env.example` (no secrets) is tracked |
+| Cloud / Kubernetes | platform secret stores (k8s `Secret` → container env), see [Deployment](deployment.md) |
+
+Even if a key is pasted into a YAML file by mistake, it is **never read from
+there** — the settings models accept secrets exclusively from environment
+variables.
 
 ## Instance config dirs
 
