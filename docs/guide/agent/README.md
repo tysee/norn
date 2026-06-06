@@ -177,13 +177,17 @@ Five providers are supported. Each provider's secret comes from its own
 environment variable (`ollama` needs no key, but does need a running daemon and a
 pulled model):
 
-| `provider`      | Secret env var            | `base_url`                                  | Recommended `output_mode` |
-| --------------- | ------------------------- | ------------------------------------------- | ------------------------- |
-| `ollama`        | *(none)*                  | local URL, e.g. `http://localhost:11434/v1` | `native`                  |
-| `openai-api`    | `OPENAI_API_KEY`          | `null`                                      | `tool`                    |
-| `openai-oauth`  | `NORN_OPENAI_OAUTH_TOKEN` | `null`                                      | `tool`                    |
-| `openrouter`    | `OPENROUTER_API_KEY`      | `null`                                      | `tool`                    |
-| `anthropic-api` | `ANTHROPIC_API_KEY`       | `null`                                      | `tool`                    |
+| `provider`      | Secret env var            | `base_url`                                  | Recommended `output_mode` | Smoke-tested |
+| --------------- | ------------------------- | ------------------------------------------- | ------------------------- | ------------ |
+| `ollama`        | *(none)*                  | local URL, e.g. `http://localhost:11434/v1` | `native`                  | ✅ `gemma4:e2b` |
+| `openai-api`    | `OPENAI_API_KEY`          | `null`                                      | `tool`                    | ✅ `gpt-4o-mini` |
+| `openai-oauth`  | `NORN_OPENAI_OAUTH_TOKEN` | gateway URL (chat-completions)              | `tool`                    | ⚠️ bearer-only (see below) |
+| `openrouter`    | `OPENROUTER_API_KEY`      | `null`                                      | `tool`                    | ✅ `openai/gpt-4o-mini` |
+| `anthropic-api` | `ANTHROPIC_API_KEY`       | `null`                                      | `tool`                    | ✅ `claude-haiku-4-5` |
+
+The four ✅ rows were verified end-to-end (real `norn deps` run, structured
+verdict parsed) on the models shown. `openai-oauth` works only with an OAuth
+bearer accepted by a chat-completions endpoint — see its section below.
 
 The secret is read directly from the environment at model-build time; nothing is
 called over the network while assembling the model object. A missing key surfaces
@@ -251,28 +255,31 @@ One catch for `openai-api`: also set `NORN_AGENT_BASE_URL=` (empty) in
 `deploy/.env`, so the compose Ollama translation does not leak into the OpenAI
 client (`${VAR-…}` semantics keep an explicitly-empty value empty).
 
-### The `openai-oauth` flow (bearer token instead of an API key)
+### The `openai-oauth` provider (bearer token instead of an API key)
 
-`openai-oauth` is for authenticating with an **OAuth access token** (e.g. from a
-ChatGPT subscription) instead of a platform `sk-` API key. norn passes
-`NORN_OPENAI_OAUTH_TOKEN` as the bearer to an OpenAI-compatible client, plus
-your `base_url` if set. The flow:
+`openai-oauth` is identical to `openai-api` except the secret is read from
+`NORN_OPENAI_OAUTH_TOKEN` and sent as a **bearer token** to an OpenAI-compatible
+**chat-completions** endpoint. Use it when your access is an OAuth/bearer token
+rather than a platform `sk-` key — e.g. an enterprise gateway or a proxy that
+issues short-lived bearers:
 
-1. **Obtain a token** via an OAuth login of an OpenAI client — e.g. the Codex
-   CLI: `codex login` opens a browser OAuth flow and stores tokens in
-   `~/.codex/auth.json`; extract the access token:
-   `export NORN_OPENAI_OAUTH_TOKEN="$(jq -r '.tokens.access_token' ~/.codex/auth.json)"`.
-2. **Switch the provider** (env over YAML):
-   `NORN_AGENT_PROVIDER=openai-oauth`, `NORN_AGENT_MODEL=<model your plan allows>`,
-   `NORN_AGENT_OUTPUT_MODE=tool`.
-3. **Set `base_url` to an endpoint that accepts the bearer.** This is the
-   catch: the standard `api.openai.com/v1` only accepts `sk-` API keys —
-   OAuth tokens are rejected there. Point `NORN_AGENT_BASE_URL` at the
-   OAuth-accepting endpoint your token was issued for (this is exactly why
-   `openai-oauth` exists as a separate provider next to `openai-api`).
-4. **Tokens expire.** The issuing client (e.g. Codex CLI) refreshes them on
-   use; on a 401, re-read the token from its auth store — no browser re-login
-   needed until the refresh token itself expires.
+```bash
+export NORN_OPENAI_OAUTH_TOKEN=<bearer>
+export NORN_AGENT_PROVIDER=openai-oauth NORN_AGENT_MODEL=<model> NORN_AGENT_OUTPUT_MODE=tool
+# point at the endpoint that accepts your bearer (chat-completions API shape):
+export NORN_AGENT_BASE_URL=https://<your-gateway>/v1
+```
+
+> **A ChatGPT / Codex-CLI OAuth token is NOT a drop-in here.** That token
+> targets the Codex **Responses** backend (`chatgpt.com/backend-api/codex`),
+> which this provider's chat-completions client does not speak, and the public
+> `api.openai.com/v1` rejects it (`missing_scope: model.request`). Supporting
+> it would require a separate Responses-API path with Codex-specific headers
+> and model ids — out of scope for the platform. For OpenAI access use
+> `openai-api` with a real `sk-` key; `openai-oauth` is for OAuth bearers that
+> a chat-completions endpoint actually accepts.
+
+Bearer tokens expire — refresh from your issuer and re-export on a 401.
 
 ## See also
 
