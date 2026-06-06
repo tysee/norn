@@ -226,3 +226,4 @@ instances/crypto/
 docs/prd/
 .claude/
 docs/specs/
+.user.yml
