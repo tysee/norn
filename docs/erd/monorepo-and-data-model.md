@@ -21,7 +21,7 @@ norn/                    # repository tysee/norn (uv workspace, all packages v0.
 ├── cli/                # typer orchestrator: `norn forecast|calibrate|deps|mcp|scheduler|…`
 ├── deploy/             # docker-compose (infra + services), Dockerfiles, Lightdash bring-up
 ├── config/             # central YAML config (database/forecast/agent/mcp/scheduler)
-├── instances/          # domain instances: ett + crypto are submodules; example is a plain tracked dir (copyable template)
+├── instances/          # domain instances: ett is a submodule; example is a plain tracked dir (copyable template)
 └── pyproject.toml      # uv workspace, shared lint/types, requires-python >=3.12
 ```
 
@@ -241,7 +241,6 @@ in memory); the durable audit lives in `forecast_run`.
 `instances/` holds domain instances in two forms:
 
 - **`instances/ett`** — a git submodule (`norn-ett-instance`). The public worked example with real data, ingestion, and scheduler wiring.
-- **`instances/crypto`** — a git submodule (private). A production crypto-forecasting instance.
 - **`instances/example`** — a plain tracked directory (not a submodule). The copyable starting template: config files for all five sections, example forecast jobs (`orders_baseline.yml`, `orders_timesfm.yml`) and a dependency job (`deps/visits_orders.yml`), and a minimal dbt skeleton. Copy this directory to bootstrap a new instance; replace the placeholder mart and metric names with your own.
 
 ### The ETT example, end to end

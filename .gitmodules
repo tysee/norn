@@ -1,6 +1,3 @@
-[submodule "instances/crypto"]
-	path = instances/crypto
-	url = git@github.com:tysee/norn-crypto-instance.git
 [submodule "instances/ett"]
 	path = instances/ett
 	url = git@github.com:tysee/norn-ett-instance.git
