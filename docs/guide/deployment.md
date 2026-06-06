@@ -14,7 +14,10 @@ cloud/Kubernetes.
 ## Local (Docker)
 
 For local development, a Compose stack provides a ClickHouse sidecar (and, optionally,
-a Lightdash BI stack) at `deploy/docker-compose.yml`.
+a Lightdash BI stack) at `deploy/docker-compose.yml`. A file-by-file map of the
+whole runtime layer (compose files, images, env-file matrix, the dbt projects'
+roles, platform↔instance boundaries) lives in
+[`deploy/README.md`](../../deploy/README.md).
 
 The `clickhouse` service exposes:
 
