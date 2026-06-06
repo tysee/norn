@@ -58,6 +58,11 @@ Full user guide lives in [`docs/guide/`](docs/guide/README.md):
 - [MCP](docs/guide/mcp.md) — connecting and the 11-tool reference for agents.
 - [Deployment](docs/guide/deployment.md) — local Docker, the TimesFM worker, the long-running services (scheduler, MCP, agent worker), cloud/Kubernetes.
 
+Architecture deep-dive and integrations:
+
+- [Architecture & data model](docs/erd/monorepo-and-data-model.md) — monorepo layout, the ER model of the contract tables, tech-stack rationale; canonical diagrams: [component](docs/erd/architecture.mermaid) and [ER](docs/erd/erd.mermaid).
+- [Lightdash integration](docs/integration/lightdash.md) — publishing the actual-vs-forecast dashboards from the contract tables.
+
 ## Layout
 
 - `packages/core` — config + job contracts (forecast-job, forecast-point) + ClickHouse client
