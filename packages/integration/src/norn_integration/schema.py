@@ -46,7 +46,10 @@ def apply_schema(client: Client, retention_months: int = 12) -> None:
             client.command(stmt)
 
 
-_TABLE_RE = re.compile(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", re.IGNORECASE)
+# [\w.]+ so a future schema.sql qualifying a name (db.table) is captured whole —
+# \w+ alone would capture only the database part and make the EXISTS pre-flight
+# check in prepare_schema silently false-positive.
+_TABLE_RE = re.compile(r"CREATE TABLE IF NOT EXISTS\s+([\w.]+)", re.IGNORECASE)
 
 
 def required_tables() -> list[str]:

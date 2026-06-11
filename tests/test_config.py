@@ -210,3 +210,26 @@ def test_scheduler_env_overrides(tmp_path, monkeypatch):
     s = get_settings(refresh=True)
     assert s.scheduler.port == 9999
     assert s.agent.worker_url == "http://agent:9400"
+
+
+def test_password_in_yaml_is_rejected(tmp_path, monkeypatch):
+    # the secret is env-only by contract; a YAML `password:` would otherwise be
+    # silently accepted and likely committed (review finding F-2)
+    _write_config(tmp_path)
+    (tmp_path / "database.yml").write_text(
+        "host: chhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\n"
+        "manage_schema: true\npassword: from_yaml\n")
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.delenv("NORN_CLICKHOUSE_URL", raising=False)
+    with pytest.raises(ValueError, match="password"):
+        get_settings(refresh=True)
+
+
+def test_dsn_in_yaml_is_rejected(tmp_path, monkeypatch):
+    _write_config(tmp_path)
+    (tmp_path / "database.yml").write_text(
+        "host: chhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\n"
+        "manage_schema: true\ndsn: http://u:p@h:8123/db\n")
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    with pytest.raises(ValueError, match="dsn"):
+        get_settings(refresh=True)
