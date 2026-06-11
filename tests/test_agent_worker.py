@@ -17,7 +17,8 @@ BODY = {
 
 
 def _test_agent():
-    return Agent(TestModel(), output_type=DependencyDecision, system_prompt=SYSTEM_PROMPT)
+    # instructions= matches the production constructor path in build_agent()
+    return Agent(TestModel(), output_type=DependencyDecision, instructions=SYSTEM_PROMPT)
 
 
 def test_health():

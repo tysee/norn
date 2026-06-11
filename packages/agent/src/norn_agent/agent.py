@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 
 from pydantic_ai import Agent
 
@@ -123,6 +124,25 @@ def build_agent(model=None) -> Agent:
     )
 
 
+# Process-lifetime HTTP client for agent-worker calls: one connection pool
+# instead of a new TCP connection per judge/health request. Never closed —
+# it lives as long as the process (scheduler / CLI one-shot), which is fine.
+_WORKER_CLIENT = None
+_WORKER_CLIENT_LOCK = threading.Lock()
+
+
+def _worker_client():
+    global _WORKER_CLIENT
+    if _WORKER_CLIENT is None:
+        with _WORKER_CLIENT_LOCK:  # scheduler thread + uvicorn may race the first call
+            if _WORKER_CLIENT is None:
+                import httpx
+
+                # default covers the long-running LLM judge; callers may override per request
+                _WORKER_CLIENT = httpx.Client(timeout=600.0)
+    return _WORKER_CLIENT
+
+
 def _judge_via_worker(url, measurements, meta, prior_measurements) -> DependencyDecision:
     """POST /judge to the agent worker. Any failure -> LLMUnavailable (explicit degradation)."""
     import httpx
@@ -133,7 +153,7 @@ def _judge_via_worker(url, measurements, meta, prior_measurements) -> Dependency
         "prior_measurements": [m.model_dump() for m in (prior_measurements or [])],
     }
     try:
-        resp = httpx.post(f"{url.rstrip('/')}/judge", json=body, timeout=600.0)
+        resp = _worker_client().post(f"{url.rstrip('/')}/judge", json=body)
     except httpx.HTTPError as e:
         raise LLMUnavailable(f"agent worker unreachable: {type(e).__name__}: {e}") from e
     if resp.status_code != 200:
