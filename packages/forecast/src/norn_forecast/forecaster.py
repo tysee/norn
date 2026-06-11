@@ -119,9 +119,24 @@ class LogTransformForecaster:
     ) -> list[dict]:
         if any(v <= 0 for v in values):
             return self._base.forecast(values, horizon, covariates=covariates)
+        if covariates:
+            # Raw-scale covariates alongside a log-space target would make the
+            # base model's implicit XReg regression silently ill-conditioned —
+            # fail fast instead of producing quietly wrong intervals.
+            raise ValueError(
+                "transform: log is not supported together with covariates "
+                "(raw-scale leaders would mix with a log-space target); "
+                "disable the transform or the covariates for this job"
+            )
         log_values = [math.log(v) for v in values]
-        rows = self._base.forecast(log_values, horizon, covariates=covariates)
+        rows = self._base.forecast(log_values, horizon)
         return [{**r, **{k: math.exp(r[k]) for k in self._QUANTS if k in r}} for r in rows]
+
+    def close(self) -> None:
+        """Delegate to the wrapped forecaster (it may own an HTTP client)."""
+        close = getattr(self._base, "close", None)
+        if close is not None:
+            close()
 
 
 def make_forecaster(job: ForecastJob, timesfm_url: str | None = None) -> Forecaster:

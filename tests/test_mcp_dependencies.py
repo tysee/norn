@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 
 from norn_forecast import mcp_tools
 from norn_forecast.mcp_server import TOOL_NAMES, build_server
@@ -10,7 +10,8 @@ def _seed(ch, run_id="dep-1"):
         "metric_dependency",
         [[run_id, "log_return", "symbol=BTCUSDT", "symbol=TONUSDT",
           "lagged_cross_correlation", 3, 0.8, "source_leads", None, 0.8,
-          datetime(2025, 1, 1), datetime(2025, 6, 1), datetime(2025, 6, 2)]],
+          # created_at inside the 12-month TTL window (hardcoded dates expire -> flaky vanishing rows)
+          datetime(2025, 1, 1), datetime(2025, 6, 1), datetime.now(UTC)]],
         column_names=[
             "analysis_run_id", "metric_name", "source_segment", "target_segment",
             "method", "lag", "score", "direction", "p_value", "confidence",
@@ -21,7 +22,7 @@ def _seed(ch, run_id="dep-1"):
         "dependency_explanation",
         [[run_id, "log_return", "symbol=BTCUSDT", "symbol=TONUSDT", 3, "source_leads",
           1, 0.7, "BTC leads TON by 3d", "correlation != causation",
-          "corr stable vs prior", "test", datetime(2025, 6, 2)]],
+          "corr stable vs prior", "test", datetime.now(UTC)]],
         column_names=[
             "analysis_run_id", "metric_name", "source_segment", "target_segment",
             "lag", "direction", "is_real", "confidence", "explanation", "caveats",
@@ -53,7 +54,8 @@ def test_get_dependencies_fallback_when_unexplained(ch):
         "metric_dependency",
         [["dep-x", "log_return", "symbol=BTCUSDT", "symbol=TONUSDT",
           "granger", 2, 8.4, "source_leads", 0.004, 0.9,
-          datetime(2025, 1, 1), datetime(2025, 6, 1), datetime(2025, 6, 2)]],
+          # created_at inside the 12-month TTL window (hardcoded dates expire -> flaky vanishing rows)
+          datetime(2025, 1, 1), datetime(2025, 6, 1), datetime.now(UTC)]],
         column_names=[
             "analysis_run_id", "metric_name", "source_segment", "target_segment",
             "method", "lag", "score", "direction", "p_value", "confidence",

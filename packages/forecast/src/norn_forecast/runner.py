@@ -29,9 +29,16 @@ from norn_core.contract import ForecastJob, Grain
 from norn_forecast.covariates import (
     build_covariate_array,
     covariate_series,
-    resolve_covariate_specs,
+    resolve_covariate_specs_bulk,
 )
 from norn_forecast.forecaster import Forecaster, make_forecaster
+
+
+def _close_forecaster(forecaster: Forecaster) -> None:
+    """Close a locally-created forecaster (it may own an httpx connection pool)."""
+    close = getattr(forecaster, "close", None)
+    if close is not None:
+        close()
 
 _STEP = {Grain.daily: timedelta(days=1), Grain.hourly: timedelta(hours=1)}
 
@@ -90,13 +97,29 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
     # --- run setup: id, forecaster, time step, list of segments ---
     job = job.resolved()
     run_id = str(uuid.uuid4())
+    # close a forecaster we created ourselves (it may own an httpx pool); an
+    # injected one belongs to the caller (e.g. a long-lived scheduler instance)
+    owns_forecaster = forecaster is None
     forecaster = forecaster or make_forecaster(job)
+    try:
+        return _run_job(job, client, forecaster, run_id)
+    finally:
+        if owns_forecaster:
+            _close_forecaster(forecaster)
+
+
+def _run_job(job: ForecastJob, client: Client, forecaster: Forecaster, run_id: str) -> str:
     started = datetime.now(UTC)
     step = _STEP[job.grain]
     policy = get_settings().forecast.covariates.horizon_policy
     segments = _segments(client, job)
+    # one dependency query for all segments instead of one per segment
+    spec_by_seg = resolve_covariate_specs_bulk(
+        client, job, [_segment_key(d) for d in segments]
+    )
     points: list[list] = []
     used_covariates = False
+    skipped = 0  # segments with no data in the source mart
 
     # --- per segment: series -> forecast -> rows of future points ---
     # The whole forecasting loop is under try: on a forecaster failure (e.g. the TimesFM
@@ -106,6 +129,7 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
         for dims in segments:
             ts, vals = _series(client, job, dims)
             if not vals:
+                skipped += 1
                 continue
             seg_key = _segment_key(dims)
             last_ts = ts[-1]
@@ -120,7 +144,7 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
             # (this is the wide per-metric mart of the target). We pull context_length+lag points so that
             # the shift (t - lag) is covered; value-binding is parameterized, the mart goes through identifier.
             covs: dict[str, list[float]] = {}
-            for spec in resolve_covariate_specs(client, job, seg_key):
+            for spec in spec_by_seg[seg_key]:
                 s_ts, s_vals = covariate_series(
                     client, spec.mart, spec.metric, spec.segment,
                     job.context_length + spec.lag,
@@ -150,10 +174,12 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
         # this is not a "failed run" but a rejected job; we do not write forecast_run.
         raise
     except Exception as e:
+        # segments_skipped=0: 'skipped' means "no data in the source", not "failed" —
+        # status='failed' + error carry the failure semantics (see jobs.md).
         client.insert(
             "forecast_run",
             [[run_id, job.metric, "failed", job.model, "v0",
-              started, datetime.now(UTC), len(segments), len(segments), str(e)]],
+              started, datetime.now(UTC), len(segments), 0, str(e)]],
             column_names=[
                 "forecast_run_id", "forecast_job", "status", "model_name", "model_version",
                 "started_at", "finished_at", "segments_total", "segments_skipped", "error",
@@ -178,7 +204,7 @@ def run_job(job: ForecastJob, client: Client, forecaster: Forecaster | None = No
     client.insert(
         "forecast_run",
         [[run_id, job.metric, "success", job.model, model_version,
-          started, datetime.now(UTC), len(segments), 0, None]],
+          started, datetime.now(UTC), len(segments), skipped, None]],
         column_names=[
             "forecast_run_id", "forecast_job", "status", "model_name", "model_version",
             "started_at", "finished_at", "segments_total", "segments_skipped", "error",

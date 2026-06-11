@@ -261,3 +261,53 @@ def test_run_job_filter_unsafe_column_rejected(ch):
                       filter={"bad; drop": "x"}, horizon=3, seasonality=7)
     with pytest.raises(ValueError):
         run_job(job, client=ch)
+
+
+def test_run_job_failed_run_reports_zero_skipped(ch):
+    # 'skipped' means "segment had no data", not "failed": the failed-run row
+    # carries its semantics in status+error (review F-12)
+    start = datetime(2026, 1, 1)
+    rows = [[start + timedelta(days=d), "x", float(d % 7)] for d in range(21)]
+    _seed_mart(ch, rows)
+
+    class _Boom:
+        def forecast(self, *a, **k):
+            raise ConnectionError("down")
+
+    job = ForecastJob(metric="value", source="test_mart", horizon=3, seasonality=7)
+    with pytest.raises(RuntimeError):
+        run_job(job, client=ch, forecaster=_Boom())
+    total, skipped = ch.query(
+        "SELECT segments_total, segments_skipped FROM forecast_run"
+    ).result_rows[0]
+    assert total == 1 and skipped == 0
+
+
+def test_run_job_closes_owned_forecaster(ch, monkeypatch):
+    # a forecaster created inside run_job may own an httpx pool — it must be
+    # closed on the way out (review F-21); injected forecasters stay open
+    from norn_forecast import runner as runner_mod
+
+    start = datetime(2026, 1, 1)
+    rows = [[start + timedelta(days=d), "x", float(d % 7)] for d in range(21)]
+    _seed_mart(ch, rows)
+
+    closed = {"n": 0}
+
+    class _Closable:
+        def forecast(self, values, horizon, covariates=None):
+            return [{"horizon_step": h, "y_hat": 1.0, "p10": 0.0, "p50": 1.0, "p90": 2.0}
+                    for h in range(1, horizon + 1)]
+
+        def close(self):
+            closed["n"] += 1
+
+    monkeypatch.setattr(runner_mod, "make_forecaster", lambda job: _Closable())
+    job = ForecastJob(metric="value", source="test_mart", horizon=3, seasonality=7)
+    run_job(job, client=ch)
+    assert closed["n"] == 1
+
+    # injected forecaster: caller owns it, run_job must NOT close it
+    fc = _Closable()
+    run_job(job, client=ch, forecaster=fc)
+    assert closed["n"] == 1

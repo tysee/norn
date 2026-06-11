@@ -34,6 +34,9 @@ def seasonal_naive_forecast(
     n = arr.size
     if n == 0:
         raise ValueError("values must be non-empty")
+    if seasonality < 1:
+        # seasonality=0 would divide by zero in the horizon loop below
+        raise ValueError(f"seasonality must be >= 1, got {seasonality}")
 
     # z-multipliers from the configurable quantiles (normal approximation)
     z_low = statistics.NormalDist().inv_cdf(quantiles[0])

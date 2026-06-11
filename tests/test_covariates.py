@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from norn_core.contract import CovariateSpec, ForecastJob
 from norn_forecast.covariates import build_covariate_array, resolve_covariate_specs
@@ -40,12 +40,15 @@ def test_resolve_specs_explicit_and_from_dependencies(ch):
     ch.command("TRUNCATE TABLE IF EXISTS metric_dependency"); ch.command("TRUNCATE TABLE IF EXISTS dependency_explanation")
     ch.insert("metric_dependency",
               [["r1", "log_return", "symbol=BTCUSDT", "symbol=TONUSDT", "lagged_cross_correlation",
-                4, 0.8, "source_leads", None, 0.8, datetime(2025, 1, 1), datetime(2025, 6, 1), datetime(2025, 6, 2)]],
+                4, 0.8, "source_leads", None, 0.8, datetime(2025, 1, 1), datetime(2025, 6, 1),
+                # created_at must stay inside the contract tables' 12-month TTL window —
+                # a hardcoded date silently expires and the insert's rows vanish (time-bomb flake)
+                datetime.now(UTC)]],
               column_names=["analysis_run_id","metric_name","source_segment","target_segment","method",
                             "lag","score","direction","p_value","confidence","window_start","window_end","created_at"])
     ch.insert("dependency_explanation",
               [["r1", "log_return", "symbol=BTCUSDT", "symbol=TONUSDT", 4, "source_leads",
-                1, 0.7, "x", "c", "n", "m", datetime(2025, 6, 2)]],
+                1, 0.7, "x", "c", "n", "m", datetime.now(UTC)]],
               column_names=["analysis_run_id","metric_name","source_segment","target_segment","lag",
                             "direction","is_real","confidence","explanation","caveats","change_note","llm_model","created_at"])
     job2 = ForecastJob(metric="close", source="t", dimensions=["symbol"], use_dependencies=True)

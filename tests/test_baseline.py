@@ -36,3 +36,11 @@ def test_quantiles_drive_interval_width():
     w80 = out80[0]["p90"] - out80[0]["p10"]
     w50 = out50[0]["p90"] - out50[0]["p10"]
     assert w80 > w50 > 0  # wider quantiles -> wider band, derived (no magic Z)
+
+
+def test_zero_seasonality_rejected():
+    # seasonality=0 used to hit (h - 1) % seasonality -> ZeroDivisionError
+    import pytest
+
+    with pytest.raises(ValueError, match="seasonality"):
+        seasonal_naive_forecast([1.0, 2.0, 3.0], horizon=2, seasonality=0)
