@@ -83,7 +83,7 @@ export NORN_FORECAST_COVARIATES__HORIZON_POLICY=ffill         # forecast.covaria
 Some settings have dedicated, well-known env vars (set via `validation_alias`)
 rather than the `NORN_<SECTION>_<FIELD>` form:
 
-- `NORN_DB_PASSWORD` — `database.password` (env-only secret).
+- `NORN_DB_PASSWORD` — `database.password` (env-only secret; enforced — a `password:` or `dsn:` key in `database.yml` is rejected at startup).
 - `NORN_CLICKHOUSE_URL` — `database.dsn` (full DSN override).
 
 ## Secrets (env-only)

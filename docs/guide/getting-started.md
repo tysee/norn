@@ -93,12 +93,12 @@ See [Jobs → Schema ownership](jobs.md) for the full explanation.
 
 ## 4. Run your first forecast
 
-A forecast is described by a declarative **job YAML** (a `ForecastJob`). Save the
-following **abstract** job to `forecasts/example.yml`, replacing the placeholders with
-your own metric, mart, and dimension:
+A forecast is described by a declarative **job YAML** (a `ForecastJob`). The repo
+ships a ready example at `forecasts/example.yml` — open it and substitute your own
+metric, mart, and dimension. The fields, for reference:
 
 ```yaml
-# forecasts/example.yml
+# forecasts/example.yml (shipped in the repo — edit in place)
 metric: <your_metric>              # the metric column/name to forecast
 source: <your_mart>                # ClickHouse table to read, e.g. analytics.mart_metric
 grain: daily                       # daily | hourly (default: daily)
@@ -107,7 +107,8 @@ horizon: 30                        # steps to forecast ahead
 model: baseline-seasonal-naive     # default model; needs no external worker
 ```
 
-Run it:
+(Don't run it with the literal `<...>` placeholders — point `metric`/`source` at a
+real column and mart first.) Then run it:
 
 ```bash
 uv run norn forecast forecasts/example.yml

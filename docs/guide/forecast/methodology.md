@@ -39,8 +39,9 @@ active) for "past forecast vs actual" charts.
 
 - **MAPE / WAPE** — point accuracy (lower = better). `mape = mean|.|` over
   nonzero actuals; `wape = sum|actual − y_hat| / sum|actual|`.
-- **Coverage** — share of actuals inside the 80% `p10..p90` interval (target ≈ 80;
-  >80 = intervals too wide, <80 = too narrow).
+- **Coverage** — share of actuals inside the configured interval (target ≈ the
+  nominal coverage of `forecast.quantiles`: 80% for the default `[0.1, 0.5, 0.9]`;
+  above target = intervals too wide, below = too narrow).
 - **Bias** — `mean(y_hat − actual)`; <0 = forecasts run low.
 
 These are surfaced per model family (baseline / timesfm / timesfm+xreg)
