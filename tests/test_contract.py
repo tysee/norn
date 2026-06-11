@@ -1,5 +1,8 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
 
 from norn_core.contract import ForecastJob, ForecastPoint, Grain
 
@@ -15,8 +18,7 @@ def test_forecast_job_tunables_default_none():
 
 
 def test_forecast_job_resolved_fills_from_settings(monkeypatch):
-    import os
-    os.environ["NORN_CONFIG_DIR"] = "config"
+    monkeypatch.setenv("NORN_CONFIG_DIR", "config")
     job = ForecastJob(metric="sales", source="t").resolved()
     assert job.horizon == 30 and job.context_length == 512 and job.seasonality == 7
 
@@ -73,14 +75,33 @@ def test_forecast_point_roundtrip():
         forecast_run_id="run-1",
         metric_name="sales",
         segment_key="region=eu",
-        forecast_ts=datetime(2026, 6, 1),
+        forecast_ts=datetime(2026, 6, 1, tzinfo=UTC),
         horizon_step=1,
         y_hat=10.0,
         p10=8.0,
         p50=10.0,
         p90=12.0,
         model_name="baseline-seasonal-naive",
-        created_at=datetime(2026, 5, 29),
+        created_at=datetime(2026, 5, 29, tzinfo=UTC),
     )
     assert pt.y_actual is None
     assert pt.p90 > pt.p10
+
+
+def test_forecast_point_rejects_naive_datetimes():
+    # naive datetimes get shifted by the machine's UTC offset on ClickHouse
+    # insert — the contract boundary must refuse them outright
+    with pytest.raises(ValidationError):
+        ForecastPoint(
+            forecast_run_id="run-1", metric_name="sales", segment_key="region=eu",
+            forecast_ts=datetime(2026, 6, 1),  # naive
+            horizon_step=1, y_hat=10.0, p10=8.0, p50=10.0, p90=12.0,
+            model_name="baseline-seasonal-naive",
+            created_at=datetime(2026, 5, 29, tzinfo=UTC),
+        )
+
+
+def test_forecast_job_rejects_zero_seasonality():
+    # seasonality=0 would divide by zero inside the baseline's horizon loop
+    with pytest.raises(ValidationError):
+        ForecastJob(metric="sales", source="t", seasonality=0)

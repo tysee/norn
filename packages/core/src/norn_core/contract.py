@@ -18,12 +18,11 @@ Classes/methods:
 """
 from __future__ import annotations
 
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 
 class Grain(str, Enum):
@@ -46,9 +45,9 @@ class ForecastJob(BaseModel):
     filter: dict[str, str] = Field(default_factory=dict)  # column=value equality; scopes the source
     covariates: list[CovariateSpec] = Field(default_factory=list)
     use_dependencies: bool = False
-    horizon: int | None = None
-    context_length: int | None = None
-    seasonality: int | None = None
+    horizon: int | None = Field(default=None, ge=1)
+    context_length: int | None = Field(default=None, ge=1)
+    seasonality: int | None = Field(default=None, ge=1)  # 0 would divide by zero in the baseline
     model: str = "baseline-seasonal-naive"
     transform: str = "none"  # "none" | "log": forecast in log-space (positive multiplicative series)
     schedule: str | None = None
@@ -76,7 +75,9 @@ class ForecastPoint(BaseModel):
     forecast_run_id: str
     metric_name: str
     segment_key: str
-    forecast_ts: datetime
+    # tz-aware only: clickhouse-connect shifts naive datetimes by the machine's
+    # UTC offset on insert, so a naive timestamp at this boundary is always a bug.
+    forecast_ts: AwareDatetime
     horizon_step: int
     y_hat: float
     p10: float
@@ -84,4 +85,4 @@ class ForecastPoint(BaseModel):
     p90: float
     y_actual: float | None = None
     model_name: str
-    created_at: datetime
+    created_at: AwareDatetime

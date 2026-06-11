@@ -14,7 +14,7 @@ def test_judge_returns_structured_decision_with_testmodel():
     ]
     meta = {"source_segment": "symbol=BTCUSDT", "target_segment": "symbol=TONUSDT",
             "metric_name": "log_return"}
-    test_agent = Agent(TestModel(), output_type=DependencyDecision, system_prompt=SYSTEM_PROMPT)
+    test_agent = Agent(TestModel(), output_type=DependencyDecision, instructions=SYSTEM_PROMPT)
     decision = judge_dependencies(measurements, meta, agent=test_agent)
     assert isinstance(decision, DependencyDecision)
     assert len(decision.relations) >= 1
@@ -175,7 +175,20 @@ def _meta():
     return {"source_segment": "a", "target_segment": "b", "metric_name": "m"}
 
 
+def _mock_worker(monkeypatch, handler):
+    """Route the module-level worker client through a MockTransport — the same
+    httpx.Client production path, no real network."""
+    import httpx
+
+    from norn_agent import agent as agentmod
+
+    monkeypatch.setattr(agentmod, "_WORKER_CLIENT",
+                        httpx.Client(transport=httpx.MockTransport(handler)))
+
+
 def test_worker_url_success(monkeypatch):
+    import json as jsonlib
+
     import httpx
 
     from norn_agent import agent as agentmod
@@ -183,46 +196,43 @@ def test_worker_url_success(monkeypatch):
 
     monkeypatch.setenv("NORN_AGENT_WORKER_URL", "http://agent:9400")
 
-    def fake_post(url, json=None, timeout=None):
-        assert url == "http://agent:9400/judge"
-        assert json["meta"]["metric_name"] == "m" and len(json["measurements"]) == 1
-        return httpx.Response(200, json=DependencyDecision(relations=[]).model_dump(),
-                              request=httpx.Request("POST", url))
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "http://agent:9400/judge"
+        body = jsonlib.loads(request.content)
+        assert body["meta"]["metric_name"] == "m" and len(body["measurements"]) == 1
+        return httpx.Response(200, json=DependencyDecision(relations=[]).model_dump())
 
-    monkeypatch.setattr(httpx, "post", fake_post)
+    _mock_worker(monkeypatch, handler)
     decision = agentmod.judge_dependencies([_measurement()], _meta())
     assert decision.relations == []
 
 
 def test_worker_url_down_raises_llm_unavailable(monkeypatch):
     import httpx
+    import pytest
 
     from norn_agent import agent as agentmod
     from norn_agent.agent import LLMUnavailable
 
     monkeypatch.setenv("NORN_AGENT_WORKER_URL", "http://agent:9400")
 
-    def fake_post(url, json=None, timeout=None):
-        raise httpx.ConnectError("connection refused", request=httpx.Request("POST", url))
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
 
-    monkeypatch.setattr(httpx, "post", fake_post)
-    import pytest
-
+    _mock_worker(monkeypatch, handler)
     with pytest.raises(LLMUnavailable):
         agentmod.judge_dependencies([_measurement()], _meta())
 
 
 def test_worker_url_5xx_raises_llm_unavailable(monkeypatch):
     import httpx
+    import pytest
 
     from norn_agent import agent as agentmod
     from norn_agent.agent import LLMUnavailable
 
     monkeypatch.setenv("NORN_AGENT_WORKER_URL", "http://agent:9400")
-    monkeypatch.setattr(httpx, "post", lambda url, json=None, timeout=None: httpx.Response(
-        503, json={"detail": "llm down"}, request=httpx.Request("POST", url)))
-    import pytest
-
+    _mock_worker(monkeypatch, lambda req: httpx.Response(503, json={"detail": "llm down"}))
     with pytest.raises(LLMUnavailable):
         agentmod.judge_dependencies([_measurement()], _meta())
 
@@ -235,8 +245,11 @@ def test_explicit_agent_bypasses_worker(monkeypatch):
     from norn_agent.contract import DependencyDecision
 
     monkeypatch.setenv("NORN_AGENT_WORKER_URL", "http://agent:9400")
-    monkeypatch.setattr(httpx, "post",
-                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("HTTP called")))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("HTTP called")
+
+    _mock_worker(monkeypatch, handler)
 
     class _Ret:
         output = DependencyDecision(relations=[])

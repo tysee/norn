@@ -159,8 +159,11 @@ def test_scheduler_command_fails_fast_on_bad_manifest(tmp_path):
 
 
 def test_scheduler_command_serves(monkeypatch, tmp_path):
+    # manifest validation now checks the job YAML exists -> ship a real one
+    job = tmp_path / "j.yml"
+    job.write_text("metric: value\nsource: test_mart\n")
     good = tmp_path / "jobs.yml"
-    good.write_text("jobs:\n  - name: x\n    action: forecast\n    job: j.yml\n    schedule: '0 6 * * *'\n")
+    good.write_text(f"jobs:\n  - name: x\n    action: forecast\n    job: {job}\n    schedule: '0 6 * * *'\n")
     seen = {}
     import norn_scheduler.service as svc
     monkeypatch.setattr(svc, "serve", lambda p: seen.setdefault("path", p))

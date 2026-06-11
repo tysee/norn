@@ -111,7 +111,7 @@ def granger(
     best_p = max(best_p, _P_VALUE_FLOOR)
     # --- significance threshold -> direction; score = -log10(p) ---
     direction = "source_leads" if best_p < significance else "inconclusive"
-    score = float(-np.log10(best_p)) if best_p > 0 else 0.0
+    score = float(-np.log10(best_p))  # best_p >= _P_VALUE_FLOOR > 0 (floored above)
     return DependencyMeasurement(
         method="granger", lag=best_lag, score=score,
         direction=direction, p_value=best_p, confidence=1.0 - best_p,

@@ -46,10 +46,17 @@ from clickhouse_connect.driver.client import Client
 
 
 def _latest_run_id(client: Client, metric: str, segment: str) -> str | None:
+    # Only run_ids that exist in forecast_run with status='success' are servable:
+    # this excludes (a) orphaned points of a run that died between its point and
+    # run inserts (the scheduler retries with a fresh run_id, leaving the partial
+    # epoch behind) and (b) calibration backtest points, whose run_ids are never
+    # written to forecast_run at all.
     rows = client.query(
         "SELECT forecast_run_id FROM forecast_point "
         "WHERE metric_name=%(m)s AND segment_key=%(s)s "
-        "ORDER BY created_at DESC LIMIT 1",
+        "AND forecast_run_id IN ("
+        "  SELECT forecast_run_id FROM forecast_run WHERE status='success'"
+        ") ORDER BY created_at DESC LIMIT 1",
         parameters={"m": metric, "s": segment},
     ).result_rows
     return rows[0][0] if rows else None
@@ -213,10 +220,17 @@ def get_calibration(client: Client, metric: str, segment: str) -> dict:
     }
 
 
+# Discovery-tool cap: metric/segment cardinality is small in practice; the LIMIT
+# only guards against an accidental unbounded scan of a huge forecast_point.
+_LIST_LIMIT = 1000
+
+
 def list_metrics(client) -> list[str]:
     """Metrics available for forecasting (DISTINCT from forecast_point)."""
     rows = client.query(
-        "SELECT DISTINCT metric_name FROM forecast_point ORDER BY metric_name"
+        "SELECT DISTINCT metric_name FROM forecast_point ORDER BY metric_name "
+        "LIMIT %(lim)s",
+        parameters={"lim": _LIST_LIMIT},
     ).result_rows
     return [r[0] for r in rows]
 
@@ -225,8 +239,8 @@ def list_segments(client, metric: str) -> list[str]:
     """Segments with a forecast for the metric (DISTINCT from forecast_point)."""
     rows = client.query(
         "SELECT DISTINCT segment_key FROM forecast_point WHERE metric_name=%(m)s "
-        "ORDER BY segment_key",
-        parameters={"m": metric},
+        "ORDER BY segment_key LIMIT %(lim)s",
+        parameters={"m": metric, "lim": _LIST_LIMIT},
     ).result_rows
     return [r[0] for r in rows]
 
@@ -242,35 +256,40 @@ def get_dependencies(client, target_segment: str, metric: str) -> list[dict]:
     if not run:
         return []
     run_id = run[0][0]
-    sources = client.query(
-        "SELECT DISTINCT source_segment FROM metric_dependency WHERE analysis_run_id=%(r)s",
+    # --- batched fetch: one query per table for the whole run, grouped in Python
+    # (the per-source loop used to cost 2 round-trips per source segment) ---
+    method_rows = client.query(
+        "SELECT source_segment, method, lag, score, p_value, direction "
+        "FROM metric_dependency WHERE analysis_run_id=%(r)s ORDER BY source_segment",
         parameters={"r": run_id},
     ).result_rows
+    exp_rows = client.query(
+        "SELECT source_segment, lag, direction, is_real, confidence, explanation, "
+        "caveats, change_note "
+        "FROM dependency_explanation WHERE analysis_run_id=%(r)s",
+        parameters={"r": run_id},
+    ).result_rows
+    methods_by_source: dict[str, list[dict]] = {}
+    for m in method_rows:
+        methods_by_source.setdefault(m[0], []).append(
+            {"method": m[1], "lag": m[2], "score": m[3], "p_value": m[4], "direction": m[5]}
+        )
+    exp_by_source: dict[str, tuple] = {}
+    for e in exp_rows:
+        exp_by_source.setdefault(e[0], e[1:])  # first row per source (was LIMIT 1)
     out = []
-    for (source,) in sources:
-        methods = client.query(
-            "SELECT method, lag, score, p_value, direction FROM metric_dependency "
-            "WHERE analysis_run_id=%(r)s AND source_segment=%(s)s",
-            parameters={"r": run_id, "s": source},
-        ).result_rows
-        exp = client.query(
-            "SELECT lag, direction, is_real, confidence, explanation, caveats, change_note "
-            "FROM dependency_explanation WHERE analysis_run_id=%(r)s AND source_segment=%(s)s LIMIT 1",
-            parameters={"r": run_id, "s": source},
-        ).result_rows
+    for source in sorted(methods_by_source):
+        exp = exp_by_source.get(source)
         rec = {
             "source_segment": source, "target_segment": target_segment,
-            "explained": bool(exp),
-            "methods": [
-                {"method": m[0], "lag": m[1], "score": m[2], "p_value": m[3], "direction": m[4]}
-                for m in methods
-            ],
+            "explained": exp is not None,
+            "methods": methods_by_source[source],
         }
-        if exp:
-            e = exp[0]
+        if exp is not None:
             rec.update({
-                "lag": e[0], "direction": e[1], "is_real": bool(e[2]), "confidence": e[3],
-                "explanation": e[4], "caveats": e[5], "change_note": e[6],
+                "lag": exp[0], "direction": exp[1], "is_real": bool(exp[2]),
+                "confidence": exp[3], "explanation": exp[4], "caveats": exp[5],
+                "change_note": exp[6],
             })
         else:
             rec.update({
@@ -290,29 +309,34 @@ def get_dependency_history(
         "SELECT analysis_run_id, is_real, confidence, lag, direction, change_note, created_at "
         "FROM dependency_explanation "
         "WHERE target_segment=%(t)s AND source_segment=%(s)s AND metric_name=%(m)s "
-        f"ORDER BY created_at DESC LIMIT {int(limit)}",
-        parameters={"t": target_segment, "s": source_segment, "m": metric},
+        "ORDER BY created_at DESC LIMIT %(lim)s",
+        parameters={"t": target_segment, "s": source_segment, "m": metric,
+                    "lim": int(limit)},
     ).result_rows
+    if not runs:
+        return []
 
-    # --- per run: the agent's decision + numeric methods from the same epoch ---
-    history = []
-    for run in runs:
-        run_id = run[0]
-        methods = client.query(
-            "SELECT method, lag, score, p_value FROM metric_dependency "
-            "WHERE analysis_run_id=%(r)s AND source_segment=%(s)s",
-            parameters={"r": run_id, "s": source_segment},
-        ).result_rows
-        history.append({
-            "analysis_run_id": run_id,
-            "created_at": run[6].isoformat(),
-            "is_real": bool(run[1]),
-            "confidence": run[2],
-            "lag": run[3],
-            "direction": run[4],
-            "change_note": run[5],
-            "methods": [
-                {"method": m[0], "lag": m[1], "score": m[2], "p_value": m[3]} for m in methods
-            ],
-        })
-    return history
+    # --- numeric methods for ALL listed runs in one query (was one per run) ---
+    method_rows = client.query(
+        "SELECT analysis_run_id, method, lag, score, p_value FROM metric_dependency "
+        "WHERE analysis_run_id IN %(ids)s AND source_segment=%(s)s",
+        # tuple, not list: clickhouse-connect renders a tuple as the documented
+        # parenthesized IN form; a list would render as an array literal
+        parameters={"ids": tuple(run[0] for run in runs), "s": source_segment},
+    ).result_rows
+    methods_by_run: dict[str, list[dict]] = {}
+    for m in method_rows:
+        methods_by_run.setdefault(m[0], []).append(
+            {"method": m[1], "lag": m[2], "score": m[3], "p_value": m[4]}
+        )
+
+    return [{
+        "analysis_run_id": run[0],
+        "created_at": run[6].isoformat(),
+        "is_real": bool(run[1]),
+        "confidence": run[2],
+        "lag": run[3],
+        "direction": run[4],
+        "change_note": run[5],
+        "methods": methods_by_run.get(run[0], []),
+    } for run in runs]

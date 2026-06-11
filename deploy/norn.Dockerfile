@@ -16,5 +16,8 @@ ENV NORN_CONFIG_DIR=/app/config
 # (e2e finding: buffered logs looked empty during startup health races)
 ENV PYTHONUNBUFFERED=1
 
+# 9200 = MCP role, 9300 = scheduler role (documentation for operators/tooling)
+EXPOSE 9200 9300
+
 ENTRYPOINT ["norn"]
 CMD ["--help"]

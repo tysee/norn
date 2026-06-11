@@ -5,10 +5,28 @@ import pytest
 from norn_forecast import mcp_tools
 
 
-def _seed_points(ch, run_id, metric="close", segment="symbol=BTC"):
+def _seed_run(ch, run_id="run-A", status="success", started=None):
+    ch.insert(
+        "forecast_run",
+        [[run_id, "job.yml", status, "timesfm-2.5", "2.5", started or datetime(2026, 5, 30),
+          datetime(2026, 5, 30), 1, 0, None]],
+        column_names=[
+            "forecast_run_id", "forecast_job", "status", "model_name", "model_version",
+            "started_at", "finished_at", "segments_total", "segments_skipped", "error",
+        ],
+    )
+
+
+def _seed_points(ch, run_id, metric="close", segment="symbol=BTC", with_run=True,
+                 created=None):
+    # readers only serve run_ids that exist in forecast_run with status='success',
+    # so a seeded forecast needs its run row too (with_run=False seeds an orphan)
+    if with_run:
+        _seed_run(ch, run_id)
     rows = [
         [run_id, metric, segment, datetime(2026, 6, 1 + h), h + 1,
-         100.0 + h, 90.0 + h, 100.0 + h, 110.0 + h, None, "timesfm-2.5", datetime(2026, 5, 30)]
+         100.0 + h, 90.0 + h, 100.0 + h, 110.0 + h, None, "timesfm-2.5",
+         created or datetime(2026, 5, 30)]
         for h in range(3)
     ]
     ch.insert(
@@ -99,18 +117,6 @@ def test_get_calibration_missing(ch):
     assert out == {"available": False}
 
 
-def _seed_run(ch, run_id="run-A", status="success"):
-    ch.insert(
-        "forecast_run",
-        [[run_id, "job.yml", status, "timesfm-2.5", "2.5", datetime(2026, 5, 30),
-          datetime(2026, 5, 30), 1, 0, None]],
-        column_names=[
-            "forecast_run_id", "forecast_job", "status", "model_name", "model_version",
-            "started_at", "finished_at", "segments_total", "segments_skipped", "error",
-        ],
-    )
-
-
 def test_get_run_status_latest(ch):
     _seed_run(ch, "run-A")
     out = mcp_tools.get_run_status(ch)
@@ -121,7 +127,6 @@ def test_get_run_status_latest(ch):
 
 def test_get_forecast_status_for_series(ch):
     _seed_points(ch, "run-A")
-    _seed_run(ch, "run-A")
     out = mcp_tools.get_forecast_status(ch, "close", "symbol=BTC")
     assert out["available"] is True
     assert out["forecast_run_id"] == "run-A" and out["status"] == "success"
@@ -148,3 +153,23 @@ def test_get_calibration_includes_is_sparse(ch):
     out = mcp_tools.get_calibration(ch, "close", "symbol=BTC")
     assert out["available"] is True
     assert out["is_sparse"] is True
+
+
+def test_latest_run_excludes_orphaned_and_backtest_points(ch):
+    # run-OLD: complete (points + success run row). run-ORPHAN: newer points with
+    # NO forecast_run row — a run that died between its point and run inserts, or
+    # calibration backtest points (calibrate never writes forecast_run). Readers
+    # must keep serving run-OLD, not the orphaned epoch.
+    _seed_points(ch, "run-OLD", created=datetime(2026, 5, 30))
+    _seed_points(ch, "run-ORPHAN", with_run=False, created=datetime(2026, 6, 2))
+    out = mcp_tools.get_forecast(ch, "close", "symbol=BTC")
+    assert len(out) == 3
+    assert mcp_tools.get_forecast_status(ch, "close", "symbol=BTC")["forecast_run_id"] == "run-OLD"
+
+
+def test_latest_run_excludes_failed_runs(ch):
+    _seed_points(ch, "run-GOOD", created=datetime(2026, 5, 30))
+    # newer run exists but failed -> its (partial) points must not be served
+    _seed_run(ch, "run-BAD", status="failed")
+    _seed_points(ch, "run-BAD", with_run=False, created=datetime(2026, 6, 2))
+    assert mcp_tools.get_forecast_status(ch, "close", "symbol=BTC")["forecast_run_id"] == "run-GOOD"

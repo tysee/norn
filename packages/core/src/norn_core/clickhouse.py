@@ -23,8 +23,10 @@ from clickhouse_connect.driver.client import Client
 # clickhouse-connect binds VALUES via parameters, but it cannot bind SQL
 # identifiers (table/column names) — those must be interpolated. Restrict any
 # interpolated identifier to a safe shape so attacker-controlled job fields
-# cannot inject SQL (defense-in-depth). Allows dotted db.table forms.
-_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
+# cannot inject SQL (defense-in-depth). Allows a single dotted db.table form;
+# rejects `db..table` / trailing dots, which would otherwise pass the "safe"
+# check and surface as a confusing ClickHouse syntax error.
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
 
 
 def _safe_identifier(name: str) -> str:

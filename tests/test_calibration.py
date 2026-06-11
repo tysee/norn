@@ -136,3 +136,47 @@ def test_calibrate_job_without_covariates_unchanged(ch):
         "SELECT DISTINCT model_name FROM forecast_point WHERE forecast_run_id=%(r)s",
         parameters={"r": run_id}).result_rows}
     assert models == {"baseline-seasonal-naive (backtest)"}
+
+
+def test_backtest_metrics_all_cutoffs_skipped_returns_zero():
+    # series shorter than one fold (len <= horizon -> every cut <= 0) -> the
+    # explicit zero-metrics early return, not a crash
+    from norn_forecast.forecaster import BaselineForecaster
+
+    m = backtest_metrics([1.0] * 3, BaselineForecaster(7), horizon=3, n_cutoffs=3)
+    assert m == {"coverage": 0.0, "wape": 0.0, "mape": 0.0, "bias": 0.0, "n_points": 0}
+
+
+def test_calibrate_job_single_backtest_pass(ch):
+    # metrics are derived from backtest_points, not recomputed by a second
+    # rolling-origin pass — the forecaster must be called exactly once per cutoff
+    _seed_xreg_mart(ch)
+    job = ForecastJob(metric="value", source="test_mart", dimensions=["region"], horizon=7)
+    fc = _CapturingForecaster()
+    calibrate_job(job, client=ch, forecaster=fc)
+    from norn_core.config import get_settings
+
+    expected_cutoffs = min(get_settings().forecast.calibration.n_cutoffs, 7)
+    assert len(fc.calls) == expected_cutoffs
+
+
+def test_calibrate_job_marks_single_fold_as_sparse(ch):
+    # 14 days with horizon 7 admits exactly one rolling-origin fold (7 points):
+    # metrics from a single window are too noisy -> is_sparse=1 (review F-5)
+    ch.command(
+        "CREATE TABLE test_mart (ts DateTime, region String, value Float64) "
+        "ENGINE = MergeTree ORDER BY (region, ts)"
+    )
+    start = datetime(2026, 1, 1)
+    ch.insert(
+        "test_mart",
+        [[start + timedelta(days=d), "eu", float(d % 7)] for d in range(14)],
+        column_names=["ts", "region", "value"],
+    )
+    job = ForecastJob(metric="value", source="test_mart", dimensions=["region"], horizon=7)
+    run_id = calibrate_job(job, client=ch)
+    n_points, is_sparse = ch.query(
+        "SELECT n_points, is_sparse FROM forecast_segment WHERE forecast_run_id=%(r)s",
+        parameters={"r": run_id},
+    ).result_rows[0]
+    assert n_points == 7 and is_sparse == 1
