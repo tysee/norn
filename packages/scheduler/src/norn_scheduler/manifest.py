@@ -8,7 +8,8 @@ of the schedule (schedule: in the job YAML stays a hint and is ignored here).
 Classes:
 - ManifestJob — one entry: name/action/job/schedule (+ retries/enabled).
 - SchedulerManifest — list of entries; from_yaml() with fail-fast validation
-  (unique names, valid cron, known action).
+  (unique names, valid cron, known action, and job YAML files that exist —
+  a typo in `job:` fails at startup, not at the first cron tick).
 """
 from __future__ import annotations
 
@@ -55,4 +56,16 @@ class SchedulerManifest(BaseModel):
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "SchedulerManifest":
-        return cls.model_validate(yaml.safe_load(Path(path).read_text()))
+        manifest = cls.model_validate(yaml.safe_load(Path(path).read_text()))
+        # Job files are checked here (load time) and not in the model: unit tests
+        # may build manifests in memory, but a served manifest with a typo in
+        # `job:` must fail at startup, not at the first cron tick (which would
+        # also pointlessly walk the whole retry chain).
+        missing = [f"{j.name}: {j.job}" for j in manifest.jobs
+                   if j.enabled and not Path(j.job).is_file()]
+        if missing:
+            raise FileNotFoundError(
+                f"manifest {path}: job YAML not found for enabled entries: "
+                f"{'; '.join(missing)}"
+            )
+        return manifest

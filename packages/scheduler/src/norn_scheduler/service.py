@@ -23,11 +23,17 @@ from typing import Callable
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from pydantic import ValidationError
+
 from norn_scheduler.actions import run_action
 from norn_scheduler.manifest import ManifestJob, SchedulerManifest
 from norn_scheduler.retry import with_retries
 
 logger = logging.getLogger(__name__)
+
+# Configuration errors do not fix themselves between attempts — retrying a
+# missing/invalid job YAML only burns the whole backoff chain before surfacing.
+_CONFIG_ERRORS = (FileNotFoundError, ValidationError)
 
 
 class NornScheduler:
@@ -66,12 +72,20 @@ class NornScheduler:
 
     # --- execution ---
     def _execute(self, entry: ManifestJob) -> None:
+        # Atomic check-and-reserve: this is the real overlap guard. trigger()'s
+        # pre-check only provides the 409 UX; without this re-check a manual run
+        # enqueued between that check and APScheduler dispatch could overlap a
+        # cron tick (their job ids differ, so max_instances=1 cannot help).
         with self._lock:
+            if entry.name in self._running:
+                logger.warning("job %s skipped: previous run still in progress", entry.name)
+                return
             self._running.add(entry.name)
         attempts = entry.retries if entry.retries is not None else self._cfg.retries
         try:
             run_id = with_retries(lambda: self._run(entry), attempts,
-                                  self._cfg.retry_base_seconds, sleep=self._sleep)
+                                  self._cfg.retry_base_seconds, sleep=self._sleep,
+                                  no_retry=_CONFIG_ERRORS)
             self.last_results[entry.name] = {
                 "status": "success", "run_id": run_id,
                 "at": datetime.now(UTC).isoformat(),
