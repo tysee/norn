@@ -124,12 +124,18 @@ def test_baseline_ignores_covariates():
 
 
 def test_timesfm_sends_covariates_only_when_present():
-    import json, httpx
+    import json
+
+    import httpx
     from norn_forecast.forecaster import TimesFMForecaster
+
     seen = {}
+
     def handler(req):
-        seen.clear(); seen.update(json.loads(req.content))
+        seen.clear()
+        seen.update(json.loads(req.content))
         return httpx.Response(200, json={"rows": []})
+
     client = httpx.Client(transport=httpx.MockTransport(handler))
     f = TimesFMForecaster("http://w", client=client)
     f.forecast([1.0, 2.0, 3.0], 1)                       # plain

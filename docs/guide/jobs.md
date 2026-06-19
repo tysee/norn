@@ -41,7 +41,7 @@ adjusted to point at real marts and dimensions.
 | `context_length` | int | from `forecast.defaults.context_length` | History window length. |
 | `seasonality` | int | from `forecast.defaults.seasonality` | Seasonal period. |
 | `model` | string | `baseline-seasonal-naive` | Forecaster: `baseline-seasonal-naive` or `timesfm-2.5`. |
-| `transform` | `none` \| `log` | `none` | `log` forecasts in log-space for positive multiplicative series (falls back to the base model if any value ≤ 0). Not supported together with covariates — the job fails fast rather than mixing raw-scale leaders with a log-space target. |
+| `transform` | `none` \| `log` | `none` | `log` forecasts in log-space for positive multiplicative series (falls back to the base model if any value ≤ 0). Not supported together with covariates — the run is recorded as `forecast_run.status=failed` rather than mixing raw-scale leaders with a log-space target. |
 | `schedule` | string | *(none)* | Optional schedule hint (cron-style); orchestration is external. |
 
 Unset tunables (`horizon`, `context_length`, `seasonality`) are filled from

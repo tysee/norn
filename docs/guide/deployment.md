@@ -193,7 +193,7 @@ jobs:
     action: forecast          # forecast | calibrate | deps
     job: /jobs/forecasts/ot_timesfm.yml   # path to an existing job YAML (inside the container)
     schedule: "15 6 * * *"    # cron (5 fields); manifest OVERRIDES the yml hint
-    retries: 2                # optional; default from config/scheduler.yml
+    retries: 2                # optional non-negative int; default from config/scheduler.yml
     enabled: true             # optional; default true
 ```
 

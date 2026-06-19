@@ -30,7 +30,7 @@ A `ManifestJob` has these fields:
 | `action` | `forecast` \| `calibrate` \| `deps` | yes | Which action to run. Validated as a literal — any other value fails the manifest. |
 | `job` | string | yes | Path to an existing job YAML (a `ForecastJob` for `forecast`/`calibrate`, a `DependencyJob` for `deps`). |
 | `schedule` | string | yes | A 5-field cron expression. Overrides the schedule hint in the job YAML. |
-| `retries` | int | no | Per-job retry count on top of the first attempt. Unset (`None`) falls back to `scheduler.retries` from config. |
+| `retries` | non-negative int | no | Per-job retry count on top of the first attempt. Unset (`None`) falls back to `scheduler.retries` from config. |
 | `enabled` | bool | no | Defaults to `true`. Only enabled jobs are registered with APScheduler. |
 
 Validation is **fail-fast** and happens when the manifest is loaded
@@ -42,6 +42,7 @@ Validation is **fail-fast** and happens when the manifest is loaded
   naming the offending value.
 - **Known action** — the `action` literal restricts values to the three
   supported actions.
+- **Non-negative retries** — `retries` must be `0` or greater when set.
 
 The `norn scheduler` command and `serve()` both load the manifest up front, so
 an invalid manifest is reported as an operator error at startup rather than
@@ -127,7 +128,7 @@ The scheduler reads its settings from `config/scheduler.yml` (the
 |---|---|---|---|
 | `host` | string | `127.0.0.1` | Interface the HTTP API binds to. `127.0.0.1` = loopback only. |
 | `port` | int | `9300` | TCP port of the HTTP API (`/health`, `/jobs`, `/jobs/{name}/trigger`). |
-| `retries` | int | `2` | Default retry attempts per job, on top of the first run. A manifest entry's `retries` overrides this per job. |
+| `retries` | non-negative int | `2` | Default retry attempts per job, on top of the first run. A manifest entry's `retries` overrides this per job. |
 | `retry_base_seconds` | int | `30` | Base of the exponential backoff between retries: `base * 2**attempt`. |
 | `misfire_grace_seconds` | int | `3600` | How late a cron tick missed during a restart may still fire (once) within this window. |
 

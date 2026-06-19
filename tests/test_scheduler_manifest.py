@@ -54,6 +54,12 @@ def test_manifest_rejects_unknown_action(tmp_path):
         SchedulerManifest.from_yaml(p)
 
 
+def test_manifest_rejects_negative_retries(tmp_path):
+    p = _write(tmp_path, GOOD.replace("retries: 0", "retries: -1"))
+    with pytest.raises(ValueError, match="retries"):
+        SchedulerManifest.from_yaml(p)
+
+
 def test_manifest_rejects_missing_job_file(tmp_path):
     # fail-fast: a typo in `job:` must surface at startup, not at the first cron tick
     p = tmp_path / "jobs.yml"
