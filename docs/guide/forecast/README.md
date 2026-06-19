@@ -79,8 +79,9 @@ against the held-out truth. `backtest_metrics` reports per segment:
 | `bias` | `mean(y_hat − actual)`; negative = forecasts run low. |
 | `n_points` | Number of held-out points scored. |
 
-Aggregates land in `forecast_segment` (with an **`is_sparse`** flag when a segment
-had no scorable points, so the agent treats its metrics with caution); the
+Aggregates land in `forecast_segment` (with an **`is_sparse`** flag when fewer
+than two full backtest folds were scored — `n_points < 2 * horizon` — so the
+agent treats single-window metrics with caution); the
 per-point `(forecast, actual)` pairs are also persisted to `forecast_point`,
 tagged `model_name '<model> (backtest)'` (with a `+xreg` marker when covariates
 are active). For an xreg job the same covariates are reconstructed at each cutoff,

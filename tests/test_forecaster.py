@@ -124,15 +124,44 @@ def test_baseline_ignores_covariates():
 
 
 def test_timesfm_sends_covariates_only_when_present():
-    import json, httpx
+    import json
+
+    import httpx
     from norn_forecast.forecaster import TimesFMForecaster
+
     seen = {}
+
     def handler(req):
-        seen.clear(); seen.update(json.loads(req.content))
+        seen.clear()
+        seen.update(json.loads(req.content))
         return httpx.Response(200, json={"rows": []})
+
     client = httpx.Client(transport=httpx.MockTransport(handler))
     f = TimesFMForecaster("http://w", client=client)
     f.forecast([1.0, 2.0, 3.0], 1)                       # plain
     assert seen.get("dynamic_numerical_covariates", {}) == {}
     f.forecast([1.0, 2.0, 3.0], 1, covariates={"btc": [1.0, 2.0, 3.0, 4.0]})
     assert seen["dynamic_numerical_covariates"] == {"btc": [1.0, 2.0, 3.0, 4.0]}
+
+
+def test_log_transform_rejects_covariates_on_log_path():
+    # raw-scale covariates with a log-space target would silently corrupt the
+    # XReg regression -> explicit failure instead (review F-26)
+    import pytest
+
+    with pytest.raises(ValueError, match="log"):
+        LogTransformForecaster(_EchoMean()).forecast(
+            [1.0, 2.0, 3.0], horizon=1, covariates={"x": [1.0] * 4}
+        )
+
+
+def test_log_transform_close_delegates_to_base():
+    class _Closable(_EchoMean):
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    base = _Closable()
+    LogTransformForecaster(base).close()
+    assert base.closed is True

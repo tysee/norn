@@ -41,7 +41,7 @@ adjusted to point at real marts and dimensions.
 | `context_length` | int | from `forecast.defaults.context_length` | History window length. |
 | `seasonality` | int | from `forecast.defaults.seasonality` | Seasonal period. |
 | `model` | string | `baseline-seasonal-naive` | Forecaster: `baseline-seasonal-naive` or `timesfm-2.5`. |
-| `transform` | `none` \| `log` | `none` | `log` forecasts in log-space for positive multiplicative series (falls back to the base model if any value ≤ 0). |
+| `transform` | `none` \| `log` | `none` | `log` forecasts in log-space for positive multiplicative series (falls back to the base model if any value ≤ 0). Not supported together with covariates — the run is recorded as `forecast_run.status=failed` rather than mixing raw-scale leaders with a log-space target. |
 | `schedule` | string | *(none)* | Optional schedule hint (cron-style); orchestration is external. |
 
 Unset tunables (`horizon`, `context_length`, `seasonality`) are filled from
@@ -176,7 +176,7 @@ the `forecast_segment` table:
 | `mape` | Mean absolute percentage error. |
 | `bias` | Systematic over-/under-forecast. |
 | `n_points` | Number of points the segment was evaluated on. |
-| `is_sparse` | Flag: the segment had too little history for a reliable verdict. |
+| `is_sparse` | Flag: fewer than two full backtest folds were scored (`n_points < 2 * horizon`) — the metrics rest on at most one rolling-origin window and are too noisy for a reliable verdict. |
 
 These same fields surface through the `get_calibration` [MCP tool](forecast/mcp.md), so
 an agent can check calibration (including `is_sparse`) before trusting a band.

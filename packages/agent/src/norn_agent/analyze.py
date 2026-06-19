@@ -95,7 +95,10 @@ def _align(src_ts, src_vals, tgt_ts, tgt_vals):
     # --- split into parallel series and compute the observation window ---
     src = [c[1] for c in common]
     tgt = [c[2] for c in common]
-    window = (common[0][0], common[-1][0]) if common else (datetime(1970, 1, 1), datetime(1970, 1, 1))
+    # tz-aware sentinel: a naive datetime inserted into ClickHouse would be
+    # shifted by the machine's UTC offset (clickhouse-connect footgun)
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    window = (common[0][0], common[-1][0]) if common else (epoch, epoch)
     return src, tgt, window
 
 
@@ -107,6 +110,16 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> Anal
     s_ts, s_v = _series(client, job.mart, job.metric, job.source_segment, job.context_length)
     t_ts, t_v = _series(client, job.mart, job.metric, job.target_segment, job.context_length)
     src, tgt, (w0, w1) = _align(s_ts, s_v, t_ts, t_v)
+    if not src:
+        # No overlap: the methods would only emit zero-evidence measurements and
+        # the LLM a vacuous explanation — skip the pass explicitly instead.
+        logger.warning(
+            "run %s: no common timestamps between %s (%d pts) and %s (%d pts); "
+            "skipping dependency analysis",
+            run_id, job.source_segment, len(s_ts), job.target_segment, len(t_ts),
+        )
+        return AnalysisResult(run_id=run_id, explained=False,
+                              degradation_reason="no overlapping timestamps")
     # Progress log: the deps pass lasts minutes (LLM judge); without milestones it looks hung.
     logger.info("run %s extract: %d aligned points (%s..%s) %s -> %s",
                 run_id, len(src), w0, w1, job.source_segment, job.target_segment)
@@ -170,10 +183,15 @@ def analyze_dependencies(job: DependencyJob, client: Client, agent=None) -> Anal
         try:
             import httpx
 
-            h = httpx.get(f"{a.worker_url.rstrip('/')}/health", timeout=5.0).json()
+            from norn_agent.agent import _worker_client
+
+            h = _worker_client().get(f"{a.worker_url.rstrip('/')}/health", timeout=5.0).json()
             judge_model = h.get("model") or a.model
-        except (httpx.HTTPError, ValueError):
-            pass  # keep the local model as a best-effort fallback
+        except (httpx.HTTPError, ValueError) as e:
+            # best-effort fallback to the local model name — but say so: silently
+            # wrong provenance in dependency_explanation is a debugging hazard
+            logger.warning("worker /health probe failed (%s: %s); recording local "
+                           "model %r as judge provenance", type(e).__name__, e, a.model)
     # --- write-back: save the agent's explanations into dependency_explanation ---
     # Segment keys are taken from the job (canonical 'symbol=...'), NOT from the LLM
     # response: the model often strips the 'symbol=' prefix, which makes the keys

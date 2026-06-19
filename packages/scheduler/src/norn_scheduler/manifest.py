@@ -8,7 +8,8 @@ of the schedule (schedule: in the job YAML stays a hint and is ignored here).
 Classes:
 - ManifestJob — one entry: name/action/job/schedule (+ retries/enabled).
 - SchedulerManifest — list of entries; from_yaml() with fail-fast validation
-  (unique names, valid cron, known action).
+  (unique names, valid cron, known action, and job YAML files that exist —
+  a typo in `job:` fails at startup, not at the first cron tick).
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ from typing import Literal
 
 import yaml
 from apscheduler.triggers.cron import CronTrigger
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ManifestJob(BaseModel):
@@ -25,7 +26,7 @@ class ManifestJob(BaseModel):
     action: Literal["forecast", "calibrate", "deps"]
     job: str                      # path to an existing job YAML (ForecastJob/DependencyJob)
     schedule: str                 # cron (5 fields); manifest overrides the hint in the job YAML
-    retries: int | None = None    # None -> default from config/scheduler.yml
+    retries: int | None = Field(default=None, ge=0)  # None -> default from config/scheduler.yml
     enabled: bool = True
 
     @field_validator("schedule")
@@ -55,4 +56,16 @@ class SchedulerManifest(BaseModel):
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "SchedulerManifest":
-        return cls.model_validate(yaml.safe_load(Path(path).read_text()))
+        manifest = cls.model_validate(yaml.safe_load(Path(path).read_text()))
+        # Job files are checked here (load time) and not in the model: unit tests
+        # may build manifests in memory, but a served manifest with a typo in
+        # `job:` must fail at startup, not at the first cron tick (which would
+        # also pointlessly walk the whole retry chain).
+        missing = [f"{j.name}: {j.job}" for j in manifest.jobs
+                   if j.enabled and not Path(j.job).is_file()]
+        if missing:
+            raise FileNotFoundError(
+                f"manifest {path}: job YAML not found for enabled entries: "
+                f"{'; '.join(missing)}"
+            )
+        return manifest

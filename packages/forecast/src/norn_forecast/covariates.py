@@ -6,6 +6,9 @@ dependencies) and constructing a timestamp-aligned leader array over context+hor
 
 Methods:
 - resolve_covariate_specs(client, job, target_segment) -> list[CovariateSpec]
+- resolve_covariate_specs_bulk(client, job, target_segments) -> dict[str, list[CovariateSpec]] —
+  the same resolution for many segments in one dependency query (used by the
+  runner/calibration segment loops).
 - covariate_series(client, mart, metric, segment, n) -> (ts[], vals[]) — leader series from the long mart
 - build_covariate_array(target_ts, source_ts, source_vals, lag, horizon, step, policy) -> list[float] | None
 """
@@ -21,26 +24,36 @@ from norn_core.contract import CovariateSpec, ForecastJob
 
 def covariate_series(client: Client, mart: str, metric: str, segment: str, n: int):
     """Most-recent n points of the leader series from the long mart (ts, value)."""
-    _safe_identifier(mart)
+    mart = _safe_identifier(mart)
     rows = client.query(
         f"SELECT ts, value FROM (SELECT ts, value FROM {mart} "
         "WHERE metric_name=%(m)s AND segment_key=%(s)s ORDER BY ts DESC "
-        f"LIMIT {int(n)}) ORDER BY ts",
-        parameters={"m": metric, "s": segment},
+        "LIMIT %(n)s) ORDER BY ts",
+        parameters={"m": metric, "s": segment, "n": int(n)},
     ).result_rows
     return [r[0] for r in rows], [float(r[1]) for r in rows]
 
 
 def resolve_covariate_specs(client: Client, job: ForecastJob, target_segment: str) -> list[CovariateSpec]:
-    specs = list(job.covariates)
-    if job.use_dependencies:
+    return resolve_covariate_specs_bulk(client, job, [target_segment])[target_segment]
+
+
+def resolve_covariate_specs_bulk(
+    client: Client, job: ForecastJob, target_segments: list[str]
+) -> dict[str, list[CovariateSpec]]:
+    """Covariate specs for many segments in ONE dependency query (avoids a
+    per-segment round-trip inside the runner/calibration segment loops)."""
+    specs = {seg: list(job.covariates) for seg in target_segments}
+    if job.use_dependencies and target_segments:
         rows = client.query(
-            "SELECT d.source_segment, d.metric_name, d.lag FROM dependency_explanation d "
-            "WHERE d.target_segment=%(t)s AND d.is_real=1 AND d.direction='source_leads'",
-            parameters={"t": target_segment},
+            "SELECT d.target_segment, d.source_segment, d.metric_name, d.lag "
+            "FROM dependency_explanation d "
+            "WHERE d.target_segment IN %(t)s AND d.is_real=1 AND d.direction='source_leads'",
+            # tuple -> documented parenthesized IN form (a list renders as an array)
+            parameters={"t": tuple(target_segments)},
         ).result_rows
-        for src, metric, lag in rows:
-            specs.append(CovariateSpec(metric=metric, segment=src, lag=int(lag)))
+        for tgt, src, metric, lag in rows:
+            specs[tgt].append(CovariateSpec(metric=metric, segment=src, lag=int(lag)))
     return specs
 
 

@@ -10,6 +10,10 @@ dependencies = [
     "statsmodels>=0.14",
     "pydantic-ai>=1.104,<2",
     "pydantic-ai-slim[openai,anthropic]>=1.104,<2",
+    # agent_worker.py (the HTTP judge) imports these; without them a standalone
+    # `pip install norn-agent` breaks even though the workspace masks the gap
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
 ]
 
 [build-system]

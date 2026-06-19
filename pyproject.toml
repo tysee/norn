@@ -16,7 +16,18 @@ norn-scheduler = { workspace = true }
 norn-cli = { workspace = true }
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5",
+    "anyio>=4",  # used directly by tests/test_cli_mcp.py (not just via mcp)
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov=packages --cov=cli --cov-report=term-missing"
+
+[tool.coverage.run]
+omit = [
+    # torch-only worker internals: exercised in the timesfm container, not in unit tests
+    "*/norn_forecast/timesfm_model.py",
+]

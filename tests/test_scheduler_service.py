@@ -81,3 +81,30 @@ def test_trigger_unknown_or_running():
             sched.trigger("a")
     finally:
         sched.shutdown()
+
+
+def test_concurrent_execute_runs_job_once():
+    # The overlap guard must be atomic (check-and-reserve under the lock): a
+    # cron tick and a manual trigger dispatch _execute concurrently with
+    # different APScheduler job ids, so max_instances=1 cannot deduplicate them.
+    import threading
+
+    runs: list[str] = []
+    gate = threading.Event()
+
+    def slow(entry):
+        runs.append(entry.name)
+        gate.wait(1.0)
+        return "rid"
+
+    sched = NornScheduler(_manifest(), run=slow, sleep=lambda _: None)
+    entry = sched.manifest.jobs[0]
+    t1 = threading.Thread(target=sched._execute, args=[entry])
+    t2 = threading.Thread(target=sched._execute, args=[entry])
+    t1.start()
+    t2.start()
+    time.sleep(0.2)   # both threads have passed the guard by now
+    gate.set()
+    t1.join()
+    t2.join()
+    assert runs == ["a"]  # exactly one execution; the loser skipped

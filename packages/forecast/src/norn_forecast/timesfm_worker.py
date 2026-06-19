@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class TimesFMModel(Protocol):
@@ -38,6 +38,15 @@ class ForecastRequest(BaseModel):
     horizon: int
     quantiles: list[float] = [0.1, 0.5, 0.9]
     dynamic_numerical_covariates: dict[str, list[float]] = {}
+
+    @field_validator("quantiles")
+    @classmethod
+    def _three_quantiles(cls, v: list[float]) -> list[float]:
+        # the model maps these positionally to p10/p50/p90 — anything else
+        # would otherwise surface as a bare IndexError-driven 500
+        if len(v) != 3:
+            raise ValueError(f"quantiles must have exactly 3 values (low, mid, high), got {len(v)}")
+        return v
 
 
 def create_app(model: TimesFMModel) -> FastAPI:

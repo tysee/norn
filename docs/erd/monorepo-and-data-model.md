@@ -166,7 +166,8 @@ All generic platform settings live in a central `config/` (five files, split by 
 sources raises a `ValidationError` at startup (the nested env delimiter is `__`). Secrets live **only**
 in env: the DB password is `NORN_DB_PASSWORD` (never in YAML), the LLM provider keys are
 `OPENAI_API_KEY` / `NORN_OPENAI_OAUTH_TOKEN` / `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY`. A full DSN
-override is `NORN_CLICKHOUSE_URL` (config, not a secret). `NORN_CONFIG_DIR` overrides the config path
+override is `NORN_CLICKHOUSE_URL` (it may embed credentials — treat it as a secret,
+env-only). `NORN_CONFIG_DIR` overrides the config path
 (default `config`). Domain values (the metric, dimensions) do NOT go into the platform config — that is
 the instance.
 

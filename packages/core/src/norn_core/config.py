@@ -29,6 +29,7 @@ import os
 from pathlib import Path
 from typing import ClassVar
 
+import yaml
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_settings import (
     BaseSettings,
@@ -46,6 +47,10 @@ class _YamlSection(BaseSettings):
     """Base: env > config/<YAML_FILE> (no field defaults — required keys must exist)."""
 
     YAML_FILE: ClassVar[str] = ""  # overridden per section
+    # Secret keys that must NEVER come from the YAML file (env-only). A YAML file
+    # containing one of these fails loudly instead of silently accepting a secret
+    # that would likely end up committed to version control.
+    YAML_FORBIDDEN: ClassVar[tuple[str, ...]] = ()
 
     model_config = SettingsConfigDict(env_nested_delimiter="__", extra="ignore")
 
@@ -69,6 +74,16 @@ class _YamlSection(BaseSettings):
                 f"directory containing {cls.YAML_FILE} (and the other section YAMLs). "
                 f"cwd={Path.cwd()}."
             )
+        # --- secrets are env-only: refuse a YAML file that tries to supply one ---
+        # (read the raw file: the settings source resolves its payload lazily)
+        if cls.YAML_FORBIDDEN:
+            payload = yaml.safe_load(yaml_path.read_text()) or {}
+            leaked = [k for k in cls.YAML_FORBIDDEN if payload.get(k) is not None]
+            if leaked:
+                raise ValueError(
+                    f"{yaml_path}: {', '.join(leaked)} must not be set in YAML — these are "
+                    f"secrets and come only from environment variables (see config docs)."
+                )
         yaml_src = YamlConfigSettingsSource(settings_cls, yaml_file=yaml_path)
         # --- order = priority: init kwargs (tests) > env > yaml (no field defaults) ---
         return (init_settings, env_settings, yaml_src)
@@ -77,6 +92,12 @@ class _YamlSection(BaseSettings):
 class DatabaseSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_DB_", env_nested_delimiter="__", extra="ignore")
     YAML_FILE: ClassVar[str] = "database.yml"
+    YAML_FORBIDDEN: ClassVar[tuple[str, ...]] = (
+        "password",
+        "dsn",
+        "NORN_DB_PASSWORD",
+        "NORN_CLICKHOUSE_URL",
+    )
     host: str
     port: int
     user: str
@@ -90,9 +111,11 @@ class DatabaseSettings(_YamlSection):
 
 
 class ForecastDefaults(BaseModel):
-    horizon: int
-    context_length: int
-    seasonality: int
+    # same lower bounds as ForecastJob: resolved() merges these via model_copy,
+    # which does NOT re-run ForecastJob's field validators
+    horizon: int = Field(ge=1)
+    context_length: int = Field(ge=1)
+    seasonality: int = Field(ge=1)  # 0 would divide by zero in the baseline
 
 
 class TimesFMSettings(BaseModel):

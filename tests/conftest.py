@@ -49,7 +49,12 @@ def ch():
 
 @pytest.fixture(autouse=True)
 def _reset(ch):
+    # all five contract tables: relying on per-test manual truncation proved
+    # fragile (a forgotten TRUNCATE inherits rows from a previous test)
     ch.command("TRUNCATE TABLE IF EXISTS forecast_point")
     ch.command("TRUNCATE TABLE IF EXISTS forecast_run")
+    ch.command("TRUNCATE TABLE IF EXISTS forecast_segment")
+    ch.command("TRUNCATE TABLE IF EXISTS metric_dependency")
+    ch.command("TRUNCATE TABLE IF EXISTS dependency_explanation")
     ch.command("DROP TABLE IF EXISTS test_mart")
     yield

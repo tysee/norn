@@ -64,7 +64,7 @@ There are exactly **11 tools**. Common parameters: `metric` is a metric name (se
 
 ### Notes on nested fields
 
-- **`methods[]`** (in `get_dependencies` / `get_dependency_history`) is the numeric evidence — a list of `{method, lag, score, p_value, direction}` objects (one per statistical method that ran, e.g. lagged cross-correlation or Granger). `get_dependency_history` omits `direction` inside its `methods[]` entries.
+- **`methods[]`** is the numeric evidence — one entry per statistical method that ran (e.g. lagged cross-correlation or Granger). The schema differs between the two tools: `get_dependencies` returns `{method, lag, score, p_value, direction}` per entry; `get_dependency_history` returns `{method, lag, score, p_value}` — **no `direction`** in history entries.
 - **`band_low` / `band_high`** in `classify_levels_vs_band` are the min `p10` and max `p90` across the horizon window used for classification.
 - When there is no data, tools return an empty list (`list[dict]` tools) or `{"available": false}` (status/calibration) or a `no_forecast` sentinel (`classify_levels_vs_band`, `get_band_position`).
 
