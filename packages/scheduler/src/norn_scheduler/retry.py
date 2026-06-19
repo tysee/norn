@@ -22,6 +22,8 @@ def with_retries(
     (capped at _MAX_DELAY_SECONDS), then re-raise. Exceptions in `no_retry`
     (e.g. configuration errors) re-raise immediately — they do not fix
     themselves between attempts."""
+    if attempts < 0:
+        raise ValueError(f"attempts must be >= 0, got {attempts}")
     for attempt in range(attempts + 1):
         try:
             return fn()

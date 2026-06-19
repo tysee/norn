@@ -27,9 +27,9 @@ import threading
 
 from pydantic_ai import Agent
 
-logger = logging.getLogger(__name__)
-
 from norn_agent.contract import DependencyDecision, DependencyMeasurement
+
+logger = logging.getLogger(__name__)
 
 
 class LLMUnavailable(RuntimeError):

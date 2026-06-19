@@ -90,7 +90,7 @@ def test_calibrate_job_passes_covariates_per_cutoff(ch, monkeypatch):
     # to the plain model because backtest never attached covariates. With explicit
     # covariates the forecaster must receive a context+horizon array at EVERY cutoff.
     monkeypatch.setenv("NORN_FORECAST_COVARIATES__HORIZON_POLICY", "ffill")
-    start = _seed_xreg_mart(ch)
+    _seed_xreg_mart(ch)
     job = ForecastJob(
         metric="value", source="test_mart", dimensions=["region"], horizon=7,
         covariates=[CovariateSpec(metric="value", segment="region=lead", lag=3)],

@@ -40,6 +40,12 @@ def _close_forecaster(forecaster: Forecaster) -> None:
     if close is not None:
         close()
 
+
+def _is_rejected_job_error(exc: ValueError) -> bool:
+    """Validation errors that reject the job before it becomes a forecast run."""
+    return str(exc).startswith("Unsafe SQL identifier:")
+
+
 _STEP = {Grain.daily: timedelta(days=1), Grain.hourly: timedelta(hours=1)}
 
 
@@ -169,10 +175,21 @@ def _run_job(job: ForecastJob, client: Client, forecaster: Forecaster, run_id: s
                     row["p10"], row["p50"], row["p90"],
                     None, job.model, now,
                 ])
-    except ValueError:
+    except ValueError as e:
         # input/identifier validation (e.g. an unsafe source) — fail fast,
         # this is not a "failed run" but a rejected job; we do not write forecast_run.
-        raise
+        if _is_rejected_job_error(e):
+            raise
+        client.insert(
+            "forecast_run",
+            [[run_id, job.metric, "failed", job.model, "v0",
+              started, datetime.now(UTC), len(segments), 0, str(e)]],
+            column_names=[
+                "forecast_run_id", "forecast_job", "status", "model_name", "model_version",
+                "started_at", "finished_at", "segments_total", "segments_skipped", "error",
+            ],
+        )
+        raise RuntimeError(f"forecast run {run_id} failed (model={job.model}): {e}") from e
     except Exception as e:
         # segments_skipped=0: 'skipped' means "no data in the source", not "failed" —
         # status='failed' + error carry the failure semantics (see jobs.md).

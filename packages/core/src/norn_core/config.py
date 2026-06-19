@@ -92,7 +92,12 @@ class _YamlSection(BaseSettings):
 class DatabaseSettings(_YamlSection):
     model_config = SettingsConfigDict(env_prefix="NORN_DB_", env_nested_delimiter="__", extra="ignore")
     YAML_FILE: ClassVar[str] = "database.yml"
-    YAML_FORBIDDEN: ClassVar[tuple[str, ...]] = ("password", "dsn")
+    YAML_FORBIDDEN: ClassVar[tuple[str, ...]] = (
+        "password",
+        "dsn",
+        "NORN_DB_PASSWORD",
+        "NORN_CLICKHOUSE_URL",
+    )
     host: str
     port: int
     user: str

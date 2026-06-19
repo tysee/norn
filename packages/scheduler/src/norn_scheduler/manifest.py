@@ -18,7 +18,7 @@ from typing import Literal
 
 import yaml
 from apscheduler.triggers.cron import CronTrigger
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ManifestJob(BaseModel):
@@ -26,7 +26,7 @@ class ManifestJob(BaseModel):
     action: Literal["forecast", "calibrate", "deps"]
     job: str                      # path to an existing job YAML (ForecastJob/DependencyJob)
     schedule: str                 # cron (5 fields); manifest overrides the hint in the job YAML
-    retries: int | None = None    # None -> default from config/scheduler.yml
+    retries: int | None = Field(default=None, ge=0)  # None -> default from config/scheduler.yml
     enabled: bool = True
 
     @field_validator("schedule")

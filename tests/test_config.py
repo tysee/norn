@@ -225,6 +225,20 @@ def test_password_in_yaml_is_rejected(tmp_path, monkeypatch):
         get_settings(refresh=True)
 
 
+def test_env_password_alias_in_yaml_is_rejected(tmp_path, monkeypatch):
+    # Env-style aliases are still YAML keys if they appear in the file; they must
+    # be rejected too, otherwise the env-only secret contract is bypassed.
+    _write_config(tmp_path)
+    (tmp_path / "database.yml").write_text(
+        "host: chhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\n"
+        "manage_schema: true\nNORN_DB_PASSWORD: from_yaml\n")
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.delenv("NORN_DB_PASSWORD", raising=False)
+    monkeypatch.delenv("NORN_CLICKHOUSE_URL", raising=False)
+    with pytest.raises(ValueError, match="NORN_DB_PASSWORD"):
+        DatabaseSettings()
+
+
 def test_dsn_in_yaml_is_rejected(tmp_path, monkeypatch):
     _write_config(tmp_path)
     (tmp_path / "database.yml").write_text(
@@ -233,3 +247,15 @@ def test_dsn_in_yaml_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
     with pytest.raises(ValueError, match="dsn"):
         get_settings(refresh=True)
+
+
+def test_env_dsn_alias_in_yaml_is_rejected(tmp_path, monkeypatch):
+    _write_config(tmp_path)
+    (tmp_path / "database.yml").write_text(
+        "host: chhost\nport: 8123\nuser: norn\ndatabase: norn\nsecure: false\n"
+        "manage_schema: true\nNORN_CLICKHOUSE_URL: http://u:p@h:8123/db\n")
+    monkeypatch.setenv("NORN_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("NORN_DB_PASSWORD", "env-secret")
+    monkeypatch.delenv("NORN_CLICKHOUSE_URL", raising=False)
+    with pytest.raises(ValueError, match="NORN_CLICKHOUSE_URL"):
+        DatabaseSettings()

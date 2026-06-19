@@ -29,7 +29,6 @@ def test_short_series_falls_back_without_error():
 
 
 def test_quantiles_drive_interval_width():
-    import math
     values = [float(v) for v in [10, 12, 9, 11, 13, 8, 10] * 6]
     out80 = seasonal_naive_forecast(values, horizon=2, seasonality=7, quantiles=(0.1, 0.5, 0.9))
     out50 = seasonal_naive_forecast(values, horizon=2, seasonality=7, quantiles=(0.25, 0.5, 0.75))

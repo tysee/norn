@@ -52,8 +52,6 @@ def test_build_agent_model_from_settings(monkeypatch):
     assert captured["model"] == "test-model-x"
 
 
-import os  # noqa: E402
-
 import pytest  # noqa: E402
 
 from norn_agent.agent import _build_model  # noqa: E402

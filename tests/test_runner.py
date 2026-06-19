@@ -221,6 +221,24 @@ def test_run_job_records_failed_run_on_forecaster_error(ch):
     assert run[0][0] == "failed" and "Connection refused" in run[0][1]
 
 
+def test_run_job_records_failed_run_on_forecaster_value_error(ch):
+    start = datetime(2026, 1, 1)
+    rows = [[start + timedelta(days=d), "x", float(d % 7 + 1)] for d in range(21)]
+    _seed_mart(ch, rows)
+
+    class _BadModelConfig:
+        def forecast(self, *a, **k):
+            raise ValueError("transform: log is not supported together with covariates")
+
+    job = ForecastJob(metric="value", source="test_mart", horizon=3, seasonality=7)
+    with pytest.raises(RuntimeError, match="forecast run"):
+        run_job(job, client=ch, forecaster=_BadModelConfig())
+
+    run = ch.query("SELECT status, error FROM forecast_run").result_rows
+    assert len(run) == 1
+    assert run[0][0] == "failed" and "transform: log" in run[0][1]
+
+
 def test_run_job_filter_scopes_to_one_value(ch):
     start = datetime(2026, 1, 1)
     rows = []
